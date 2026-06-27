@@ -812,3 +812,118 @@ function MarkdownView({ source }: { source: string }) {
     </div>
   );
 }
+
+/* -------------------- Formatting helpers -------------------- */
+
+const TEXT_SWATCHES = ["#0f172a", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0891b2", "#2563eb", "#9333ea", "#db2777"];
+
+function ColorPicker({
+  label,
+  icon,
+  onPick,
+  swatches = TEXT_SWATCHES,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onPick: (color: string) => void;
+  swatches?: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState("#000000");
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 px-2" title={label}>
+          {icon}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-2">
+        <div className="mb-2 text-xs font-medium">{label}</div>
+        <div className="grid grid-cols-9 gap-1">
+          {swatches.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className="h-6 w-6 rounded border border-border"
+              style={{ background: c }}
+              onClick={() => {
+                onPick(c);
+                setOpen(false);
+              }}
+            />
+          ))}
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="color"
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            className="h-7 w-9 cursor-pointer rounded border"
+          />
+          <Button
+            size="sm"
+            className="h-7"
+            onClick={() => {
+              onPick(custom);
+              setOpen(false);
+            }}
+          >
+            Apply
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function TableInsert({ onInsert }: { onInsert: (rows: number, cols: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState(3);
+  const [cols, setCols] = useState(3);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 px-2" title="Insert table">
+          <TableIcon className="h-4 w-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-3">
+        <div className="mb-2 text-xs font-medium">Insert table</div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <label className="flex flex-col gap-1">
+            Rows
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={rows}
+              onChange={(e) => setRows(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+              className="h-8"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            Cols
+            <Input
+              type="number"
+              min={1}
+              max={10}
+              value={cols}
+              onChange={(e) => setCols(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+              className="h-8"
+            />
+          </label>
+        </div>
+        <Button
+          size="sm"
+          className="mt-3 h-7 w-full"
+          onClick={() => {
+            onInsert(rows, cols);
+            setOpen(false);
+          }}
+        >
+          Insert
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
