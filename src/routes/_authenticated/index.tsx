@@ -854,88 +854,48 @@ function MarkdownView({ source }: { source: string }) {
 
 /* -------------------- Formatting helpers -------------------- */
 
-const TEXT_SWATCHES = [
-  "#000000", "#374151", "#6b7280", "#9ca3af", "#d1d5db", "#ffffff",
-  "#7f1d1d", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fecaca",
-  "#9a3412", "#ea580c", "#f97316", "#fb923c", "#fdba74", "#fed7aa",
-  "#854d0e", "#ca8a04", "#eab308", "#facc15", "#fde047", "#fef08a",
-  "#14532d", "#16a34a", "#22c55e", "#4ade80", "#86efac", "#bbf7d0",
-  "#134e4a", "#0d9488", "#14b8a6", "#2dd4bf", "#5eead4", "#99f6e4",
-  "#0c4a6e", "#0284c7", "#0ea5e9", "#38bdf8", "#7dd3fc", "#bae6fd",
-  "#1e3a8a", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe",
-  "#4c1d95", "#7c3aed", "#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe",
-  "#831843", "#db2777", "#ec4899", "#f472b6", "#f9a8d4", "#fbcfe8",
-];
-
-const HIGHLIGHT_SWATCHES = [
-  "#fef9c3", "#fef08a", "#fde047",
-  "#dcfce7", "#bbf7d0", "#86efac",
-  "#cffafe", "#a5f3fc", "#67e8f9",
-  "#dbeafe", "#bfdbfe", "#93c5fd",
-  "#ede9fe", "#ddd6fe", "#c4b5fd",
-  "#fce7f3", "#fbcfe8", "#f9a8d4",
-  "#fee2e2", "#fecaca", "#fca5a5",
-  "#ffedd5", "#fed7aa", "#fdba74",
-];
-
 function ColorPicker({
   label,
   icon,
   onPick,
-  swatches = TEXT_SWATCHES,
-  cols = 6,
+  defaultColor = "#000000",
 }: {
   label: string;
   icon: React.ReactNode;
   onPick: (color: string) => void;
-  swatches?: string[];
-  cols?: number;
+  defaultColor?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [custom, setCustom] = useState("#000000");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [color, setColor] = useState(defaultColor);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 px-2" title={label}>
-          {icon}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-2">
-        <div className="mb-2 text-xs font-medium">{label}</div>
-        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-          {swatches.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className="h-6 w-6 rounded border border-border"
-              style={{ background: c }}
-              onClick={() => {
-                onPick(c);
-                setOpen(false);
-              }}
-            />
-          ))}
-        </div>
-        <div className="mt-2 flex items-center gap-2">
-          <input
-            type="color"
-            value={custom}
-            onChange={(e) => setCustom(e.target.value)}
-            className="h-7 w-9 cursor-pointer rounded border"
-          />
-          <Button
-            size="sm"
-            className="h-7"
-            onClick={() => {
-              onPick(custom);
-              setOpen(false);
-            }}
-          >
-            Apply
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+    <div className="relative inline-flex">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1 px-2"
+        title={label}
+        onClick={() => inputRef.current?.click()}
+      >
+        {icon}
+        <span
+          className="h-3 w-3 rounded-sm border border-border"
+          style={{ background: color }}
+          aria-hidden
+        />
+      </Button>
+      <input
+        ref={inputRef}
+        type="color"
+        value={color}
+        onChange={(e) => {
+          setColor(e.target.value);
+          onPick(e.target.value);
+        }}
+        className="pointer-events-none absolute inset-0 h-0 w-0 opacity-0"
+        tabIndex={-1}
+        aria-label={label}
+      />
+    </div>
   );
 }
 
