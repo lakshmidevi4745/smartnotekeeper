@@ -396,7 +396,7 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
-  const [tab, setTab] = useState<"edit" | "preview">("edit");
+  const [tab, setTab] = useState<"edit" | "preview">("preview");
 
   // history stack
   const undoStack = useRef<string[]>([]);
