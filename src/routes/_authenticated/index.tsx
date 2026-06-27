@@ -684,6 +684,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
       <div className="flex-1 overflow-hidden">
         {tab === "edit" ? (
           <Textarea
+            ref={textareaRef}
             value={content}
             onChange={(e) => onContentChange(e.target.value)}
             onBlur={() => pushHistory(content)}
