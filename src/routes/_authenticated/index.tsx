@@ -453,9 +453,11 @@ function NoteEditor({ noteId }: { noteId: string }) {
       if (!hiddenRef.current || !editableRef.current) return;
       const html = hiddenRef.current.innerHTML || "<p><br/></p>";
       editableRef.current.innerHTML = html;
+      ensureTrailingParagraph(editableRef.current);
       lastRenderedRef.current = content;
     });
   }, [content]);
+
 
   const pushHistory = useCallback((value: string) => {
     const last = lastPushedRef.current;
