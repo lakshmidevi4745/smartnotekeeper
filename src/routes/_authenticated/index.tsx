@@ -595,7 +595,14 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
         </div>
       </TooltipProvider>
 
+      <NoteAttachments noteId={noteId} onInsertMarkdown={(md) => {
+        const next = content + (content && !content.endsWith("\n\n") ? "\n\n" : "") + md;
+        onContentChange(next);
+        pushHistory(next);
+      }} />
+
       <div className="flex-1 overflow-hidden">
+
         {tab === "edit" ? (
           <Textarea
             value={content}
