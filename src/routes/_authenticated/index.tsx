@@ -632,6 +632,40 @@ function NoteEditor({ noteId }: { noteId: string }) {
             </span>
           )}
 
+          <div className="mx-1 h-5 w-px bg-border" />
+          <ToolbarBtn label="Bold" onClick={insertBold}>
+            <Bold className="h-4 w-4" />
+          </ToolbarBtn>
+          <ToolbarBtn label="Italic" onClick={insertItalic}>
+            <Italic className="h-4 w-4" />
+          </ToolbarBtn>
+          <Select onValueChange={setFontSize}>
+            <SelectTrigger className="h-7 w-auto gap-1 px-2 text-xs">
+              <Type className="h-4 w-4" />
+              <SelectValue placeholder="Size" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="12px">Small (12)</SelectItem>
+              <SelectItem value="14px">Normal (14)</SelectItem>
+              <SelectItem value="18px">Large (18)</SelectItem>
+              <SelectItem value="24px">X-Large (24)</SelectItem>
+              <SelectItem value="32px">Huge (32)</SelectItem>
+            </SelectContent>
+          </Select>
+          <ColorPicker
+            label="Text color"
+            icon={<Palette className="h-4 w-4" />}
+            onPick={setTextColor}
+          />
+          <ColorPicker
+            label="Highlight"
+            icon={<Highlighter className="h-4 w-4" />}
+            onPick={setBgColor}
+            swatches={["#fef08a", "#bbf7d0", "#bfdbfe", "#fecaca", "#e9d5ff", "#fed7aa"]}
+          />
+          <TableInsert onInsert={insertTable} />
+
+
           <div className="ml-auto">
             <Tabs value={tab} onValueChange={(v) => setTab(v as "edit" | "preview")}>
               <TabsList className="h-7">
