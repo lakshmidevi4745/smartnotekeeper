@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { z } from "zod";
@@ -64,7 +65,21 @@ import {
   Pencil,
   Menu,
   X,
+  Bold,
+  Italic,
+  Table as TableIcon,
+  Type,
+  Palette,
+  Highlighter,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const searchSchema = z.object({
   nb: z.string().uuid().optional(),
@@ -416,6 +431,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const redoStack = useRef<string[]>([]);
   const lastPushedRef = useRef<string>("");
   const hydratedRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!noteQ.data) return;
@@ -470,6 +486,55 @@ function NoteEditor({ noteId }: { noteId: string }) {
     setTitle(v);
     setSaveState("dirty");
     scheduleSave({ title: v });
+  };
+
+  const applyEdit = useCallback(
+    (transform: (sel: string) => { text: string; selectAfter?: [number, number] }) => {
+      setTab("edit");
+      const ta = textareaRef.current;
+      const start = ta?.selectionStart ?? content.length;
+      const end = ta?.selectionEnd ?? content.length;
+      const selected = content.slice(start, end);
+      const { text, selectAfter } = transform(selected);
+      const next = content.slice(0, start) + text + content.slice(end);
+      setContent(next);
+      setSaveState("dirty");
+      pushHistory(next);
+      scheduleSave({ content: next });
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        const [s, e] = selectAfter ?? [start + text.length, start + text.length];
+        el.setSelectionRange(s, e);
+      });
+    },
+    [content, pushHistory, scheduleSave],
+  );
+
+  const wrapHtml = (open: string, close: string, placeholder = "text") =>
+    applyEdit((sel) => {
+      const body = sel || placeholder;
+      const text = `${open}${body}${close}`;
+      return { text };
+    });
+
+  const setFontSize = (size: string) =>
+    wrapHtml(`<span style="font-size:${size}">`, `</span>`);
+  const setTextColor = (color: string) =>
+    wrapHtml(`<span style="color:${color}">`, `</span>`);
+  const setBgColor = (color: string) =>
+    wrapHtml(`<span style="background-color:${color};padding:0 2px;border-radius:2px">`, `</span>`);
+  const insertBold = () => wrapHtml("**", "**", "bold");
+  const insertItalic = () => wrapHtml("*", "*", "italic");
+  const insertTable = (rows: number, cols: number) => {
+    const header = "| " + Array.from({ length: cols }, (_, i) => `Header ${i + 1}`).join(" | ") + " |";
+    const sep = "| " + Array.from({ length: cols }, () => "---").join(" | ") + " |";
+    const body = Array.from({ length: rows }, () =>
+      "| " + Array.from({ length: cols }, () => "   ").join(" | ") + " |",
+    ).join("\n");
+    const table = `\n\n${header}\n${sep}\n${body}\n\n`;
+    applyEdit(() => ({ text: table }));
   };
 
   const doUndo = () => {
@@ -567,6 +632,40 @@ function NoteEditor({ noteId }: { noteId: string }) {
             </span>
           )}
 
+          <div className="mx-1 h-5 w-px bg-border" />
+          <ToolbarBtn label="Bold" onClick={insertBold}>
+            <Bold className="h-4 w-4" />
+          </ToolbarBtn>
+          <ToolbarBtn label="Italic" onClick={insertItalic}>
+            <Italic className="h-4 w-4" />
+          </ToolbarBtn>
+          <Select onValueChange={setFontSize}>
+            <SelectTrigger className="h-7 w-auto gap-1 px-2 text-xs">
+              <Type className="h-4 w-4" />
+              <SelectValue placeholder="Size" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="12px">Small (12)</SelectItem>
+              <SelectItem value="14px">Normal (14)</SelectItem>
+              <SelectItem value="18px">Large (18)</SelectItem>
+              <SelectItem value="24px">X-Large (24)</SelectItem>
+              <SelectItem value="32px">Huge (32)</SelectItem>
+            </SelectContent>
+          </Select>
+          <ColorPicker
+            label="Text color"
+            icon={<Palette className="h-4 w-4" />}
+            onPick={setTextColor}
+          />
+          <ColorPicker
+            label="Highlight"
+            icon={<Highlighter className="h-4 w-4" />}
+            onPick={setBgColor}
+            swatches={["#fef08a", "#bbf7d0", "#bfdbfe", "#fecaca", "#e9d5ff", "#fed7aa"]}
+          />
+          <TableInsert onInsert={insertTable} />
+
+
           <div className="ml-auto">
             <Tabs value={tab} onValueChange={(v) => setTab(v as "edit" | "preview")}>
               <TabsList className="h-7">
@@ -585,6 +684,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
       <div className="flex-1 overflow-hidden">
         {tab === "edit" ? (
           <Textarea
+            ref={textareaRef}
             value={content}
             onChange={(e) => onContentChange(e.target.value)}
             onBlur={() => pushHistory(content)}
@@ -681,6 +781,7 @@ function MarkdownView({ source }: { source: string }) {
     <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-3xl prose-h1:mt-6 prose-h1:mb-4 prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-3 prose-h3:text-xl prose-h3:mt-5 prose-h3:mb-2 prose-p:my-3 prose-p:leading-7 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-blockquote:border-l-4 prose-blockquote:border-primary/40 prose-blockquote:pl-4 prose-blockquote:italic prose-hr:my-6 prose-strong:font-semibold prose-a:text-primary">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
         components={{
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || "");
@@ -709,5 +810,120 @@ function MarkdownView({ source }: { source: string }) {
         {source || "*Empty note*"}
       </ReactMarkdown>
     </div>
+  );
+}
+
+/* -------------------- Formatting helpers -------------------- */
+
+const TEXT_SWATCHES = ["#0f172a", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0891b2", "#2563eb", "#9333ea", "#db2777"];
+
+function ColorPicker({
+  label,
+  icon,
+  onPick,
+  swatches = TEXT_SWATCHES,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onPick: (color: string) => void;
+  swatches?: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState("#000000");
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 px-2" title={label}>
+          {icon}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-2">
+        <div className="mb-2 text-xs font-medium">{label}</div>
+        <div className="grid grid-cols-9 gap-1">
+          {swatches.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className="h-6 w-6 rounded border border-border"
+              style={{ background: c }}
+              onClick={() => {
+                onPick(c);
+                setOpen(false);
+              }}
+            />
+          ))}
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="color"
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            className="h-7 w-9 cursor-pointer rounded border"
+          />
+          <Button
+            size="sm"
+            className="h-7"
+            onClick={() => {
+              onPick(custom);
+              setOpen(false);
+            }}
+          >
+            Apply
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function TableInsert({ onInsert }: { onInsert: (rows: number, cols: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState(3);
+  const [cols, setCols] = useState(3);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 px-2" title="Insert table">
+          <TableIcon className="h-4 w-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-3">
+        <div className="mb-2 text-xs font-medium">Insert table</div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <label className="flex flex-col gap-1">
+            Rows
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={rows}
+              onChange={(e) => setRows(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+              className="h-8"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            Cols
+            <Input
+              type="number"
+              min={1}
+              max={10}
+              value={cols}
+              onChange={(e) => setCols(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+              className="h-8"
+            />
+          </label>
+        </div>
+        <Button
+          size="sm"
+          className="mt-3 h-7 w-full"
+          onClick={() => {
+            onInsert(rows, cols);
+            setOpen(false);
+          }}
+        >
+          Insert
+        </Button>
+      </PopoverContent>
+    </Popover>
   );
 }
