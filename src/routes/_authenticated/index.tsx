@@ -432,6 +432,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const lastPushedRef = useRef<string>("");
   const hydratedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!noteQ.data) return;
