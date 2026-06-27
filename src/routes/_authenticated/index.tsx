@@ -610,7 +610,21 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
           />
         ) : (
           <ScrollArea className="h-full">
-            <div className="mx-auto max-w-3xl p-6">
+            <div
+              className="mx-auto max-w-3xl p-6"
+              tabIndex={0}
+              onPaste={(e) => {
+                const html = e.clipboardData.getData("text/html");
+                const text = e.clipboardData.getData("text/plain");
+                const md = html ? htmlToMarkdown(html) : text;
+                if (!md) return;
+                e.preventDefault();
+                const next = content + (content && !content.endsWith("\n\n") ? "\n\n" : "") + md;
+                onContentChange(next);
+                pushHistory(next);
+                toast.success("Pasted formatted content");
+              }}
+            >
               <MarkdownView source={content} />
             </div>
           </ScrollArea>
