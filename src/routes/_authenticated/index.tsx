@@ -488,6 +488,55 @@ function NoteEditor({ noteId }: { noteId: string }) {
     scheduleSave({ title: v });
   };
 
+  const applyEdit = useCallback(
+    (transform: (sel: string) => { text: string; selectAfter?: [number, number] }) => {
+      setTab("edit");
+      const ta = textareaRef.current;
+      const start = ta?.selectionStart ?? content.length;
+      const end = ta?.selectionEnd ?? content.length;
+      const selected = content.slice(start, end);
+      const { text, selectAfter } = transform(selected);
+      const next = content.slice(0, start) + text + content.slice(end);
+      setContent(next);
+      setSaveState("dirty");
+      pushHistory(next);
+      scheduleSave({ content: next });
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        const [s, e] = selectAfter ?? [start + text.length, start + text.length];
+        el.setSelectionRange(s, e);
+      });
+    },
+    [content, pushHistory, scheduleSave],
+  );
+
+  const wrapHtml = (open: string, close: string, placeholder = "text") =>
+    applyEdit((sel) => {
+      const body = sel || placeholder;
+      const text = `${open}${body}${close}`;
+      return { text };
+    });
+
+  const setFontSize = (size: string) =>
+    wrapHtml(`<span style="font-size:${size}">`, `</span>`);
+  const setTextColor = (color: string) =>
+    wrapHtml(`<span style="color:${color}">`, `</span>`);
+  const setBgColor = (color: string) =>
+    wrapHtml(`<span style="background-color:${color};padding:0 2px;border-radius:2px">`, `</span>`);
+  const insertBold = () => wrapHtml("**", "**", "bold");
+  const insertItalic = () => wrapHtml("*", "*", "italic");
+  const insertTable = (rows: number, cols: number) => {
+    const header = "| " + Array.from({ length: cols }, (_, i) => `Header ${i + 1}`).join(" | ") + " |";
+    const sep = "| " + Array.from({ length: cols }, () => "---").join(" | ") + " |";
+    const body = Array.from({ length: rows }, () =>
+      "| " + Array.from({ length: cols }, () => "   ").join(" | ") + " |",
+    ).join("\n");
+    const table = `\n\n${header}\n${sep}\n${body}\n\n`;
+    applyEdit(() => ({ text: table }));
+  };
+
   const doUndo = () => {
     if (undoStack.current.length <= 1) return;
     const current = undoStack.current.pop()!;
