@@ -68,10 +68,6 @@ import {
   LogOut,
   FilePlus,
   Pencil,
-  Paperclip,
-  Download,
-  FileText,
-  ImageIcon,
 } from "lucide-react";
 
 const searchSchema = z.object({
