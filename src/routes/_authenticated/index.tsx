@@ -689,7 +689,8 @@ function NoteEditor({ noteId }: { noteId: string }) {
             label="Highlight"
             icon={<Highlighter className="h-4 w-4" />}
             onPick={setBgColor}
-            swatches={["#fef08a", "#bbf7d0", "#bfdbfe", "#fecaca", "#e9d5ff", "#fed7aa"]}
+            swatches={HIGHLIGHT_SWATCHES}
+            cols={6}
           />
           <TableInsert onInsert={insertTable} />
 
