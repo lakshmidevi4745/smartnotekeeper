@@ -34,10 +34,6 @@ import {
   getNote,
   commitNote,
   rollbackNote,
-  listAttachments,
-  recordAttachment,
-  signAttachment,
-  deleteAttachment,
 } from "@/lib/notes.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
