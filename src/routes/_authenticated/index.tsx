@@ -491,7 +491,6 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const applyEdit = useCallback(
     (transform: (sel: string) => { text: string; selectAfter?: [number, number] }) => {
-      setTab("edit");
       const ta = textareaRef.current;
       const start = ta?.selectionStart ?? content.length;
       const end = ta?.selectionEnd ?? content.length;
@@ -515,7 +514,6 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const applyToPreviewSelection = useCallback(
     (wrap: (sel: string) => string): boolean => {
-      if (tab !== "preview") return false;
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) return false;
       const selText = sel.toString();
@@ -537,11 +535,16 @@ function NoteEditor({ noteId }: { noteId: string }) {
       sel.removeAllRanges();
       return true;
     },
-    [tab, content, pushHistory, scheduleSave],
+    [content, pushHistory, scheduleSave],
   );
 
   const applyFormat = (htmlWrap: (s: string) => string, placeholder = "text") => {
-    if (applyToPreviewSelection(htmlWrap)) return;
+    if (tab === "preview") {
+      if (!applyToPreviewSelection(htmlWrap)) {
+        toast.message("Select text in the preview first");
+      }
+      return;
+    }
     applyEdit((s) => ({ text: htmlWrap(s || placeholder) }));
   };
 
@@ -558,11 +561,17 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const insertTable = (rows: number, cols: number) => {
     const header = "| " + Array.from({ length: cols }, (_, i) => `Header ${i + 1}`).join(" | ") + " |";
     const sep = "| " + Array.from({ length: cols }, () => "---").join(" | ") + " |";
-    const body = Array.from({ length: rows }, () =>
-      "| " + Array.from({ length: cols }, () => "   ").join(" | ") + " |",
-    ).join("\n");
+    const body = Array.from({ length: cols }, () => "").length
+      ? Array.from({ length: rows }, () =>
+          "| " + Array.from({ length: cols }, () => "   ").join(" | ") + " |",
+        ).join("\n")
+      : "";
     const table = `\n\n${header}\n${sep}\n${body}\n\n`;
-    applyEdit(() => ({ text: table }));
+    const next = content + table;
+    setContent(next);
+    setSaveState("dirty");
+    pushHistory(next);
+    scheduleSave({ content: next });
   };
 
   const doUndo = () => {
