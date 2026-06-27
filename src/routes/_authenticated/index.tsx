@@ -734,6 +734,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
         ) : (
           <ScrollArea className="h-full">
             <div
+              ref={previewRef}
               className="mx-auto max-w-3xl p-4 sm:p-6"
               tabIndex={0}
               onPaste={(e) => {
