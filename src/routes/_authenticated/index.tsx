@@ -20,6 +20,16 @@ function htmlToMarkdown(html: string): string {
   return turndown.turndown(html).replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function ensureTrailingParagraph(root: HTMLElement) {
+  const last = root.lastElementChild;
+  const blockTags = ["TABLE", "PRE", "BLOCKQUOTE", "UL", "OL", "HR"];
+  if (!last || blockTags.includes(last.tagName)) {
+    const p = document.createElement("p");
+    p.innerHTML = "<br/>";
+    root.appendChild(p);
+  }
+}
+
 import { supabase } from "@/integrations/supabase/client";
 import {
   listNotebooks,
