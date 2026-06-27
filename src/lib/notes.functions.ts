@@ -108,7 +108,7 @@ export const updateNote = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const patch: Record<string, unknown> = {};
+    const patch: { title?: string; content?: string } = {};
     if (data.title !== undefined) patch.title = data.title;
     if (data.content !== undefined) patch.content = data.content;
     const { error } = await context.supabase.from("notes").update(patch).eq("id", data.id);
