@@ -8,6 +8,18 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { z } from "zod";
+import TurndownService from "turndown";
+
+const turndown = new TurndownService({
+  headingStyle: "atx",
+  codeBlockStyle: "fenced",
+  bulletListMarker: "-",
+});
+turndown.keep(["table", "thead", "tbody", "tr", "th", "td"]);
+
+function htmlToMarkdown(html: string): string {
+  return turndown.turndown(html).replace(/\n{3,}/g, "\n\n").trim();
+}
 
 import { supabase } from "@/integrations/supabase/client";
 import {
