@@ -1,8 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -39,7 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
@@ -61,13 +59,11 @@ import {
   Redo2,
   GitCommit,
   Undo,
-  Sparkles,
-  Send,
-  ChevronRight,
-  ChevronLeft,
   LogOut,
   FilePlus,
   Pencil,
+  Menu,
+  X,
 } from "lucide-react";
 
 const searchSchema = z.object({
@@ -88,8 +84,8 @@ function AppPage() {
   const navigate = Route.useNavigate();
   const { nb: nbParam, n: noteParam } = Route.useSearch();
   const qc = useQueryClient();
-  const [aiOpen, setAiOpen] = useState(true);
   const [search, setSearch] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const notebooksQ = useQuery({ queryKey: ["notebooks"], queryFn: () => listNotebooks() });
   const notesQ = useQuery({ queryKey: ["notes"], queryFn: () => listAllNotes() });
@@ -111,7 +107,6 @@ function AppPage() {
 
   const activeNoteId = noteParam ?? filteredNotes[0]?.id;
 
-  // create defaults if user has nothing
   const seededRef = useRef(false);
   useEffect(() => {
     if (seededRef.current) return;
@@ -127,9 +122,14 @@ function AppPage() {
     }
   }, [notebooks.length, notebooksQ.isLoading, qc]);
 
-  const selectNotebook = (id: string) => navigate({ to: "/", search: { nb: id } });
-  const selectNote = (note: NoteRef) =>
+  const selectNotebook = (id: string) => {
+    navigate({ to: "/", search: { nb: id } });
+    setSidebarOpen(false);
+  };
+  const selectNote = (note: NoteRef) => {
     navigate({ to: "/", search: { nb: note.notebook_id, n: note.id } });
+    setSidebarOpen(false);
+  };
 
   const newNotebookM = useMutation({
     mutationFn: (name: string) => createNotebook({ data: { name } }),
@@ -186,139 +186,162 @@ function AppPage() {
     navigate({ to: "/auth", replace: true });
   };
 
-  const insertIntoActiveNote = useCallback(
-    (markdown: string) => {
-      const event = new CustomEvent("notes:insert", { detail: markdown });
-      window.dispatchEvent(event);
-    },
-    [],
-  );
+  const sidebar = (
+    <>
+      <div className="flex items-center gap-2 border-b px-4 py-3">
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
+          <NotebookPen className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold leading-tight">DE Notes</div>
+          <div className="text-[10px] text-muted-foreground">Python · SQL · PySpark</div>
+        </div>
+        <Button size="icon" variant="ghost" onClick={handleSignOut} title="Sign out">
+          <LogOut className="h-4 w-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="md:hidden"
+          onClick={() => setSidebarOpen(false)}
+          title="Close"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
 
-  const createNoteFromText = (text: string) => {
-    if (!activeNotebookId) return;
-    const firstLine = text.split("\n").find((l) => l.trim());
-    const title = (firstLine ?? "AI note").replace(/^#+\s*/, "").slice(0, 80) || "AI note";
-    newNoteM.mutate({ notebook_id: activeNotebookId, title, content: text });
-  };
-
-  return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-      {/* Sidebar */}
-      <aside className="flex w-72 shrink-0 flex-col border-r bg-muted/30">
-        <div className="flex items-center gap-2 border-b px-4 py-3">
-          <div className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
-            <NotebookPen className="h-4 w-4" />
-          </div>
-          <div className="flex-1">
-            <div className="text-sm font-semibold leading-tight">DE Notes</div>
-            <div className="text-[10px] text-muted-foreground">Python · SQL · PySpark</div>
-          </div>
-          <Button size="icon" variant="ghost" onClick={handleSignOut} title="Sign out">
-            <LogOut className="h-4 w-4" />
+      <div className="border-b p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase text-muted-foreground">Notebooks</span>
+          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleNewNotebook}>
+            <Plus className="h-4 w-4" />
           </Button>
         </div>
+        <div className="space-y-0.5">
+          {notebooks.map((nb) => {
+            const active = nb.id === activeNotebookId;
+            return (
+              <div
+                key={nb.id}
+                className={`group flex items-center rounded-md ${active ? "bg-primary/10" : "hover:bg-accent"}`}
+              >
+                <button
+                  onClick={() => selectNotebook(nb.id)}
+                  className={`min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm ${active ? "font-medium text-primary" : ""}`}
+                >
+                  {nb.name}
+                </button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 md:opacity-0 md:group-hover:opacity-100"
+                  onClick={() => handleRenameNotebook(nb)}
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+                <DeleteButton
+                  label={`Delete notebook "${nb.name}" and all its notes?`}
+                  onConfirm={() => deleteNotebookM.mutate(nb.id)}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
-        <div className="border-b p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">Notebooks</span>
-            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleNewNotebook}>
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="space-y-0.5">
-            {notebooks.map((nb) => {
-              const active = nb.id === activeNotebookId;
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex items-center gap-2 border-b p-3">
+          <Search className="h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search notes…"
+            className="h-7 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
+          />
+        </div>
+        <div className="flex items-center justify-between px-3 py-2">
+          <span className="text-xs font-semibold uppercase text-muted-foreground">Notes</span>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6"
+            disabled={!activeNotebookId}
+            onClick={() =>
+              activeNotebookId &&
+              newNoteM.mutate({ notebook_id: activeNotebookId, title: "Untitled" })
+            }
+          >
+            <FilePlus className="h-4 w-4" />
+          </Button>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="space-y-0.5 px-2 pb-3">
+            {filteredNotes.map((note) => {
+              const active = note.id === activeNoteId;
               return (
                 <div
-                  key={nb.id}
+                  key={note.id}
                   className={`group flex items-center rounded-md ${active ? "bg-primary/10" : "hover:bg-accent"}`}
                 >
                   <button
-                    onClick={() => selectNotebook(nb.id)}
-                    className={`flex-1 truncate px-2 py-1.5 text-left text-sm ${active ? "font-medium text-primary" : ""}`}
+                    onClick={() => selectNote(note)}
+                    className={`min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm ${active ? "font-medium text-primary" : ""}`}
                   >
-                    {nb.name}
+                    {note.title || "Untitled"}
                   </button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                    onClick={() => handleRenameNotebook(nb)}
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
                   <DeleteButton
-                    label={`Delete notebook "${nb.name}" and all its notes?`}
-                    onConfirm={() => deleteNotebookM.mutate(nb.id)}
+                    label={`Delete note "${note.title}"?`}
+                    onConfirm={() => deleteNoteM.mutate(note.id)}
                   />
                 </div>
               );
             })}
+            {filteredNotes.length === 0 && (
+              <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+                {activeNotebookId ? "No notes yet. Click +" : "Create a notebook to begin"}
+              </p>
+            )}
           </div>
-        </div>
+        </ScrollArea>
+      </div>
+    </>
+  );
 
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex items-center gap-2 border-b p-3">
-            <Search className="h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search notes…"
-              className="h-7 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
-            />
-          </div>
-          <div className="flex items-center justify-between px-3 py-2">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">Notes</span>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-6 w-6"
-              disabled={!activeNotebookId}
-              onClick={() =>
-                activeNotebookId && newNoteM.mutate({ notebook_id: activeNotebookId, title: "Untitled" })
-              }
-            >
-              <FilePlus className="h-4 w-4" />
-            </Button>
-          </div>
-          <ScrollArea className="flex-1">
-            <div className="space-y-0.5 px-2 pb-3">
-              {filteredNotes.map((note) => {
-                const active = note.id === activeNoteId;
-                return (
-                  <div
-                    key={note.id}
-                    className={`group flex items-center rounded-md ${active ? "bg-primary/10" : "hover:bg-accent"}`}
-                  >
-                    <button
-                      onClick={() => selectNote(note)}
-                      className={`flex-1 truncate px-2 py-1.5 text-left text-sm ${active ? "font-medium text-primary" : ""}`}
-                    >
-                      {note.title || "Untitled"}
-                    </button>
-                    <DeleteButton
-                      label={`Delete note "${note.title}"?`}
-                      onConfirm={() => deleteNoteM.mutate(note.id)}
-                    />
-                  </div>
-                );
-              })}
-              {filteredNotes.length === 0 && (
-                <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-                  {activeNotebookId ? "No notes yet. Click +" : "Create a notebook to begin"}
-                </p>
-              )}
-            </div>
-          </ScrollArea>
-        </div>
+  return (
+    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+      {/* Desktop sidebar */}
+      <aside className="hidden w-72 shrink-0 flex-col border-r bg-muted/30 md:flex">
+        {sidebar}
       </aside>
+
+      {/* Mobile sidebar drawer */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <aside className="absolute inset-y-0 left-0 flex w-[85%] max-w-xs flex-col border-r bg-background shadow-xl">
+            {sidebar}
+          </aside>
+        </div>
+      )}
 
       {/* Editor */}
       <main className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-2 border-b px-2 py-2 md:hidden">
+          <Button size="icon" variant="ghost" onClick={() => setSidebarOpen(true)}>
+            <Menu className="h-5 w-5" />
+          </Button>
+          <span className="truncate text-sm font-medium">
+            {notebooks.find((nb) => nb.id === activeNotebookId)?.name ?? "DE Notes"}
+          </span>
+        </div>
+
         {activeNoteId ? (
-          <NoteEditor key={activeNoteId} noteId={activeNoteId} onInsert={insertIntoActiveNote} />
+          <NoteEditor key={activeNoteId} noteId={activeNoteId} />
         ) : (
-          <div className="flex flex-1 items-center justify-center text-center">
+          <div className="flex flex-1 items-center justify-center p-6 text-center">
             <div>
               <NotebookPen className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
               <p className="mb-4 text-sm text-muted-foreground">
@@ -339,26 +362,6 @@ function AppPage() {
           </div>
         )}
       </main>
-
-      {/* AI Panel */}
-      <aside
-        className={`flex shrink-0 flex-col border-l bg-muted/20 transition-all ${aiOpen ? "w-[420px]" : "w-10"}`}
-      >
-        <button
-          className="flex h-10 items-center justify-center border-b text-muted-foreground hover:bg-accent"
-          onClick={() => setAiOpen((v) => !v)}
-          title={aiOpen ? "Hide AI panel" : "Show AI panel"}
-        >
-          {aiOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </button>
-        {aiOpen && (
-          <AiPanel
-            canInsert={!!activeNoteId}
-            onInsert={insertIntoActiveNote}
-            onCreateNote={createNoteFromText}
-          />
-        )}
-      </aside>
     </div>
   );
 }
@@ -370,7 +373,7 @@ function DeleteButton({ label, onConfirm }: { label: string; onConfirm: () => vo
       <Button
         size="icon"
         variant="ghost"
-        className="h-6 w-6 opacity-0 group-hover:opacity-100"
+        className="h-6 w-6 md:opacity-0 md:group-hover:opacity-100"
         onClick={() => setOpen(true)}
       >
         <Trash2 className="h-3 w-3 text-destructive" />
@@ -400,7 +403,7 @@ function DeleteButton({ label, onConfirm }: { label: string; onConfirm: () => vo
 
 /* -------------------- Note Editor with undo/redo/commit/rollback -------------------- */
 
-function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: string) => void }) {
+function NoteEditor({ noteId }: { noteId: string }) {
   const qc = useQueryClient();
   const noteQ = useQuery({ queryKey: ["note", noteId], queryFn: () => getNote({ data: { id: noteId } }) });
 
@@ -409,13 +412,11 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
   const [tab, setTab] = useState<"edit" | "preview">("preview");
 
-  // history stack
   const undoStack = useRef<string[]>([]);
   const redoStack = useRef<string[]>([]);
   const lastPushedRef = useRef<string>("");
   const hydratedRef = useRef(false);
 
-  // hydrate when note loads
   useEffect(() => {
     if (!noteQ.data) return;
     hydratedRef.current = true;
@@ -427,7 +428,6 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
     setSaveState("saved");
   }, [noteQ.data]);
 
-  // push to history (debounced via change-grouping by length delta)
   const pushHistory = useCallback((value: string) => {
     const last = lastPushedRef.current;
     if (value === last) return;
@@ -437,7 +437,6 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
     lastPushedRef.current = value;
   }, []);
 
-  // autosave debounced
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleSave = useCallback(
     (next: { title?: string; content?: string }) => {
@@ -460,7 +459,6 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
   const onContentChange = (v: string) => {
     setContent(v);
     setSaveState("dirty");
-    // group small edits, snapshot on whitespace boundaries
     const last = lastPushedRef.current;
     if (Math.abs(v.length - last.length) > 30 || /\s$/.test(v) !== /\s$/.test(last)) {
       pushHistory(v);
@@ -493,7 +491,6 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
     scheduleSave({ content: next });
   };
 
-  // keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
@@ -528,36 +525,23 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
     onError: (e) => toast.error(e instanceof Error ? e.message : "Rollback failed"),
   });
 
-  // listen for AI insert events
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const md = (e as CustomEvent<string>).detail;
-      const next = content + (content.endsWith("\n\n") || content === "" ? "" : "\n\n") + md;
-      onContentChange(next);
-      pushHistory(next);
-      toast.success("Inserted into note");
-    };
-    window.addEventListener("notes:insert", handler);
-    return () => window.removeEventListener("notes:insert", handler);
-  }, [content]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const committedAt = noteQ.data?.committed_at ? new Date(noteQ.data.committed_at) : null;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center gap-2 border-b px-4 py-2">
+      <div className="flex items-center gap-2 border-b px-3 py-2 sm:px-4">
         <Input
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}
           placeholder="Untitled"
-          className="h-9 border-0 px-0 text-base font-semibold shadow-none focus-visible:ring-0"
+          className="h-9 min-w-0 flex-1 border-0 px-0 text-base font-semibold shadow-none focus-visible:ring-0"
         />
         <span className="shrink-0 text-xs text-muted-foreground">
           {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "•"}
         </span>
       </div>
       <TooltipProvider>
-        <div className="flex items-center gap-1 border-b bg-muted/30 px-2 py-1.5">
+        <div className="flex flex-wrap items-center gap-1 border-b bg-muted/30 px-2 py-1.5">
           <ToolbarBtn label="Undo (⌘Z)" onClick={doUndo} disabled={undoStack.current.length <= 1}>
             <Undo2 className="h-4 w-4" />
           </ToolbarBtn>
@@ -567,7 +551,7 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
           <div className="mx-1 h-5 w-px bg-border" />
           <ToolbarBtn label="Commit current version" onClick={() => commitM.mutate()}>
             <GitCommit className="h-4 w-4" />
-            <span className="ml-1 text-xs">Commit</span>
+            <span className="ml-1 hidden text-xs sm:inline">Commit</span>
           </ToolbarBtn>
           <ToolbarBtn
             label="Rollback to last commit"
@@ -575,10 +559,10 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
             disabled={!committedAt}
           >
             <Undo className="h-4 w-4" />
-            <span className="ml-1 text-xs">Rollback</span>
+            <span className="ml-1 hidden text-xs sm:inline">Rollback</span>
           </ToolbarBtn>
           {committedAt && (
-            <span className="ml-2 text-[10px] text-muted-foreground">
+            <span className="ml-2 hidden text-[10px] text-muted-foreground lg:inline">
               last commit {committedAt.toLocaleString()}
             </span>
           )}
@@ -598,9 +582,7 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
         </div>
       </TooltipProvider>
 
-
       <div className="flex-1 overflow-hidden">
-
         {tab === "edit" ? (
           <Textarea
             value={content}
@@ -624,7 +606,7 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
         ) : (
           <ScrollArea className="h-full">
             <div
-              className="mx-auto max-w-3xl p-6"
+              className="mx-auto max-w-3xl p-4 sm:p-6"
               tabIndex={0}
               onPaste={(e) => {
                 const html = e.clipboardData.getData("text/html");
@@ -729,134 +711,3 @@ function MarkdownView({ source }: { source: string }) {
     </div>
   );
 }
-
-/* -------------------- AI Panel -------------------- */
-
-function AiPanel({
-  canInsert,
-  onInsert,
-  onCreateNote,
-}: {
-  canInsert: boolean;
-  onInsert: (md: string) => void;
-  onCreateNote: (md: string) => void;
-}) {
-  const transport = useMemo(() => new DefaultChatTransport({ api: "/api/chat" }), []);
-  const { messages, sendMessage, status, error } = useChat({ transport });
-  const [input, setInput] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, status]);
-
-  useEffect(() => {
-    if (error) toast.error(error.message);
-  }, [error]);
-
-  const onSend = (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text || status === "submitted" || status === "streaming") return;
-    sendMessage({ text });
-    setInput("");
-  };
-
-  const messageText = (m: UIMessage) =>
-    m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
-
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-2">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <span className="text-sm font-medium">Ask Gemini</span>
-        <span className="ml-auto text-[10px] text-muted-foreground">Lovable AI</span>
-      </div>
-
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3">
-        {messages.length === 0 && (
-          <div className="space-y-2 px-1 text-xs text-muted-foreground">
-            <p>Try:</p>
-            <ul className="space-y-1">
-              <li>• "Explain Python decorators with an example"</li>
-              <li>• "PySpark groupBy vs window functions"</li>
-              <li>• "SQL: difference between CTE and subquery"</li>
-            </ul>
-          </div>
-        )}
-        <div className="space-y-3">
-          {messages.map((m) => {
-            const text = messageText(m);
-            const isUser = m.role === "user";
-            return (
-              <div key={m.id}>
-                {isUser ? (
-                  <div className="flex justify-end">
-                    <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-sm text-primary-foreground">
-                      {text}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <MarkdownView source={text} />
-                    {text && (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="h-7 text-xs"
-                          disabled={!canInsert}
-                          onClick={() => onInsert(text)}
-                        >
-                          Insert into note
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          onClick={() => onCreateNote(text)}
-                        >
-                          New note
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {(status === "submitted" || status === "streaming") &&
-            messages[messages.length - 1]?.role === "user" && (
-              <div className="text-xs text-muted-foreground">Thinking…</div>
-            )}
-        </div>
-      </div>
-
-      <form onSubmit={onSend} className="border-t p-2">
-        <div className="flex items-end gap-2">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                onSend(e as unknown as React.FormEvent);
-              }
-            }}
-            placeholder="Ask about Python, SQL, PySpark…"
-            className="max-h-32 min-h-[40px] resize-none text-sm"
-            rows={1}
-          />
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!input.trim() || status === "submitted" || status === "streaming"}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
