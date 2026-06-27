@@ -65,7 +65,21 @@ import {
   Pencil,
   Menu,
   X,
+  Bold,
+  Italic,
+  Table as TableIcon,
+  Type,
+  Palette,
+  Highlighter,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const searchSchema = z.object({
   nb: z.string().uuid().optional(),
