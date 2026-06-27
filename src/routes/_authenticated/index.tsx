@@ -593,7 +593,19 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
             value={content}
             onChange={(e) => onContentChange(e.target.value)}
             onBlur={() => pushHistory(content)}
-            placeholder="# Start writing markdown…&#10;&#10;Use ```python or ```sql code blocks. Ask the AI on the right for explanations and click Insert."
+            onPaste={(e) => {
+              const html = e.clipboardData.getData("text/html");
+              if (!html) return;
+              e.preventDefault();
+              const md = htmlToMarkdown(html);
+              const ta = e.currentTarget;
+              const start = ta.selectionStart ?? content.length;
+              const end = ta.selectionEnd ?? content.length;
+              const next = content.slice(0, start) + md + content.slice(end);
+              onContentChange(next);
+              pushHistory(next);
+            }}
+            placeholder="# Start writing markdown…&#10;&#10;Paste from Word / ChatGPT — formatting is preserved. Use ```python or ```sql code blocks."
             className="h-full w-full resize-none rounded-none border-0 bg-background font-mono text-sm leading-relaxed focus-visible:ring-0"
           />
         ) : (
