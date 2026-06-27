@@ -692,14 +692,14 @@ function NoteEditor({ noteId }: { noteId: string }) {
           <ColorPicker
             label="Text color"
             icon={<Palette className="h-4 w-4" />}
+            defaultColor="#111827"
             onPick={setTextColor}
           />
           <ColorPicker
             label="Highlight"
             icon={<Highlighter className="h-4 w-4" />}
+            defaultColor="#fde047"
             onPick={setBgColor}
-            swatches={HIGHLIGHT_SWATCHES}
-            cols={6}
           />
           <TableInsert onInsert={insertTable} />
 
