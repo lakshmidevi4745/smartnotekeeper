@@ -513,21 +513,48 @@ function NoteEditor({ noteId }: { noteId: string }) {
     [content, pushHistory, scheduleSave],
   );
 
-  const wrapHtml = (open: string, close: string, placeholder = "text") =>
-    applyEdit((sel) => {
-      const body = sel || placeholder;
-      const text = `${open}${body}${close}`;
-      return { text };
-    });
+  const applyToPreviewSelection = useCallback(
+    (wrap: (sel: string) => string): boolean => {
+      if (tab !== "preview") return false;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return false;
+      const selText = sel.toString();
+      if (!selText.trim()) return false;
+      const range = sel.getRangeAt(0);
+      if (!previewRef.current?.contains(range.commonAncestorContainer)) return false;
+      const idx = content.indexOf(selText);
+      if (idx === -1) return false;
+      if (content.indexOf(selText, idx + 1) !== -1) {
+        toast.error("Selection appears multiple times — refine it or use Edit mode");
+        return false;
+      }
+      const wrapped = wrap(selText);
+      const next = content.slice(0, idx) + wrapped + content.slice(idx + selText.length);
+      setContent(next);
+      setSaveState("dirty");
+      pushHistory(next);
+      scheduleSave({ content: next });
+      sel.removeAllRanges();
+      return true;
+    },
+    [tab, content, pushHistory, scheduleSave],
+  );
+
+  const applyFormat = (htmlWrap: (s: string) => string, placeholder = "text") => {
+    if (applyToPreviewSelection(htmlWrap)) return;
+    applyEdit((s) => ({ text: htmlWrap(s || placeholder) }));
+  };
 
   const setFontSize = (size: string) =>
-    wrapHtml(`<span style="font-size:${size}">`, `</span>`);
+    applyFormat((s) => `<span style="font-size:${size}">${s}</span>`);
   const setTextColor = (color: string) =>
-    wrapHtml(`<span style="color:${color}">`, `</span>`);
+    applyFormat((s) => `<span style="color:${color}">${s}</span>`);
   const setBgColor = (color: string) =>
-    wrapHtml(`<span style="background-color:${color};padding:0 2px;border-radius:2px">`, `</span>`);
-  const insertBold = () => wrapHtml("**", "**", "bold");
-  const insertItalic = () => wrapHtml("*", "*", "italic");
+    applyFormat(
+      (s) => `<span style="background-color:${color};padding:0 2px;border-radius:3px">${s}</span>`,
+    );
+  const insertBold = () => applyFormat((s) => `**${s}**`, "bold");
+  const insertItalic = () => applyFormat((s) => `*${s}*`, "italic");
   const insertTable = (rows: number, cols: number) => {
     const header = "| " + Array.from({ length: cols }, (_, i) => `Header ${i + 1}`).join(" | ") + " |";
     const sep = "| " + Array.from({ length: cols }, () => "---").join(" | ") + " |";
