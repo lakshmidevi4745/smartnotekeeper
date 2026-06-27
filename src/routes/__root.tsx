@@ -78,14 +78,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Smart notes" },
+      { name: "description", content: "Smart Notes AI is an intelligent notebook for organizing and retrieving technical documentation." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Smart notes" },
+      { property: "og:description", content: "Smart Notes AI is an intelligent notebook for organizing and retrieving technical documentation." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Smart notes" },
+      { name: "twitter:description", content: "Smart Notes AI is an intelligent notebook for organizing and retrieving technical documentation." },
     ],
     links: [
       {
