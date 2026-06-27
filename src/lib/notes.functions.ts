@@ -154,3 +154,73 @@ export const rollbackNote = createServerFn({ method: "POST" })
     if (upErr) throw new Error(upErr.message);
     return { content: row.committed_content };
   });
+
+export const listAttachments = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ note_id: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await context.supabase
+      .from("note_attachments")
+      .select("id, file_name, mime_type, size, storage_path, created_at")
+      .eq("note_id", data.note_id)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+export const recordAttachment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        note_id: uuid,
+        storage_path: z.string(),
+        file_name: z.string(),
+        mime_type: z.string().optional(),
+        size: z.number().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: row, error } = await context.supabase
+      .from("note_attachments")
+      .insert({
+        note_id: data.note_id,
+        user_id: context.userId,
+        storage_path: data.storage_path,
+        file_name: data.file_name,
+        mime_type: data.mime_type,
+        size: data.size,
+      })
+      .select("id, file_name, mime_type, size, storage_path, created_at")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+export const signAttachment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ storage_path: z.string() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: signed, error } = await context.supabase.storage
+      .from("note-attachments")
+      .createSignedUrl(data.storage_path, 3600);
+    if (error) throw new Error(error.message);
+    return { url: signed.signedUrl };
+  });
+
+export const deleteAttachment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: row, error: selErr } = await context.supabase
+      .from("note_attachments")
+      .select("storage_path")
+      .eq("id", data.id)
+      .single();
+    if (selErr) throw new Error(selErr.message);
+    await context.supabase.storage.from("note-attachments").remove([row.storage_path]);
+    const { error } = await context.supabase.from("note_attachments").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
