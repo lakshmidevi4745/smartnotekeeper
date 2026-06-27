@@ -14,7 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      notebooks: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notes: {
+        Row: {
+          committed_at: string | null
+          committed_content: string
+          content: string
+          created_at: string
+          id: string
+          notebook_id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          committed_at?: string | null
+          committed_content?: string
+          content?: string
+          created_at?: string
+          id?: string
+          notebook_id: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          committed_at?: string | null
+          committed_content?: string
+          content?: string
+          created_at?: string
+          id?: string
+          notebook_id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notes_notebook_id_fkey"
+            columns: ["notebook_id"]
+            isOneToOne: false
+            referencedRelation: "notebooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
