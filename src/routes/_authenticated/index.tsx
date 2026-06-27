@@ -432,6 +432,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const lastPushedRef = useRef<string>("");
   const hydratedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!noteQ.data) return;
@@ -512,21 +513,48 @@ function NoteEditor({ noteId }: { noteId: string }) {
     [content, pushHistory, scheduleSave],
   );
 
-  const wrapHtml = (open: string, close: string, placeholder = "text") =>
-    applyEdit((sel) => {
-      const body = sel || placeholder;
-      const text = `${open}${body}${close}`;
-      return { text };
-    });
+  const applyToPreviewSelection = useCallback(
+    (wrap: (sel: string) => string): boolean => {
+      if (tab !== "preview") return false;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return false;
+      const selText = sel.toString();
+      if (!selText.trim()) return false;
+      const range = sel.getRangeAt(0);
+      if (!previewRef.current?.contains(range.commonAncestorContainer)) return false;
+      const idx = content.indexOf(selText);
+      if (idx === -1) return false;
+      if (content.indexOf(selText, idx + 1) !== -1) {
+        toast.error("Selection appears multiple times — refine it or use Edit mode");
+        return false;
+      }
+      const wrapped = wrap(selText);
+      const next = content.slice(0, idx) + wrapped + content.slice(idx + selText.length);
+      setContent(next);
+      setSaveState("dirty");
+      pushHistory(next);
+      scheduleSave({ content: next });
+      sel.removeAllRanges();
+      return true;
+    },
+    [tab, content, pushHistory, scheduleSave],
+  );
+
+  const applyFormat = (htmlWrap: (s: string) => string, placeholder = "text") => {
+    if (applyToPreviewSelection(htmlWrap)) return;
+    applyEdit((s) => ({ text: htmlWrap(s || placeholder) }));
+  };
 
   const setFontSize = (size: string) =>
-    wrapHtml(`<span style="font-size:${size}">`, `</span>`);
+    applyFormat((s) => `<span style="font-size:${size}">${s}</span>`);
   const setTextColor = (color: string) =>
-    wrapHtml(`<span style="color:${color}">`, `</span>`);
+    applyFormat((s) => `<span style="color:${color}">${s}</span>`);
   const setBgColor = (color: string) =>
-    wrapHtml(`<span style="background-color:${color};padding:0 2px;border-radius:2px">`, `</span>`);
-  const insertBold = () => wrapHtml("**", "**", "bold");
-  const insertItalic = () => wrapHtml("*", "*", "italic");
+    applyFormat(
+      (s) => `<span style="background-color:${color};padding:0 2px;border-radius:3px">${s}</span>`,
+    );
+  const insertBold = () => applyFormat((s) => `**${s}**`, "bold");
+  const insertItalic = () => applyFormat((s) => `*${s}*`, "italic");
   const insertTable = (rows: number, cols: number) => {
     const header = "| " + Array.from({ length: cols }, (_, i) => `Header ${i + 1}`).join(" | ") + " |";
     const sep = "| " + Array.from({ length: cols }, () => "---").join(" | ") + " |";
@@ -661,7 +689,8 @@ function NoteEditor({ noteId }: { noteId: string }) {
             label="Highlight"
             icon={<Highlighter className="h-4 w-4" />}
             onPick={setBgColor}
-            swatches={["#fef08a", "#bbf7d0", "#bfdbfe", "#fecaca", "#e9d5ff", "#fed7aa"]}
+            swatches={HIGHLIGHT_SWATCHES}
+            cols={6}
           />
           <TableInsert onInsert={insertTable} />
 
@@ -706,6 +735,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
         ) : (
           <ScrollArea className="h-full">
             <div
+              ref={previewRef}
               className="mx-auto max-w-3xl p-4 sm:p-6"
               tabIndex={0}
               onPaste={(e) => {
@@ -815,18 +845,42 @@ function MarkdownView({ source }: { source: string }) {
 
 /* -------------------- Formatting helpers -------------------- */
 
-const TEXT_SWATCHES = ["#0f172a", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0891b2", "#2563eb", "#9333ea", "#db2777"];
+const TEXT_SWATCHES = [
+  "#000000", "#374151", "#6b7280", "#9ca3af", "#d1d5db", "#ffffff",
+  "#7f1d1d", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fecaca",
+  "#9a3412", "#ea580c", "#f97316", "#fb923c", "#fdba74", "#fed7aa",
+  "#854d0e", "#ca8a04", "#eab308", "#facc15", "#fde047", "#fef08a",
+  "#14532d", "#16a34a", "#22c55e", "#4ade80", "#86efac", "#bbf7d0",
+  "#134e4a", "#0d9488", "#14b8a6", "#2dd4bf", "#5eead4", "#99f6e4",
+  "#0c4a6e", "#0284c7", "#0ea5e9", "#38bdf8", "#7dd3fc", "#bae6fd",
+  "#1e3a8a", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe",
+  "#4c1d95", "#7c3aed", "#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe",
+  "#831843", "#db2777", "#ec4899", "#f472b6", "#f9a8d4", "#fbcfe8",
+];
+
+const HIGHLIGHT_SWATCHES = [
+  "#fef9c3", "#fef08a", "#fde047",
+  "#dcfce7", "#bbf7d0", "#86efac",
+  "#cffafe", "#a5f3fc", "#67e8f9",
+  "#dbeafe", "#bfdbfe", "#93c5fd",
+  "#ede9fe", "#ddd6fe", "#c4b5fd",
+  "#fce7f3", "#fbcfe8", "#f9a8d4",
+  "#fee2e2", "#fecaca", "#fca5a5",
+  "#ffedd5", "#fed7aa", "#fdba74",
+];
 
 function ColorPicker({
   label,
   icon,
   onPick,
   swatches = TEXT_SWATCHES,
+  cols = 6,
 }: {
   label: string;
   icon: React.ReactNode;
   onPick: (color: string) => void;
   swatches?: string[];
+  cols?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState("#000000");
@@ -839,7 +893,7 @@ function ColorPicker({
       </PopoverTrigger>
       <PopoverContent className="w-auto p-2">
         <div className="mb-2 text-xs font-medium">{label}</div>
-        <div className="grid grid-cols-9 gap-1">
+        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
           {swatches.map((c) => (
             <button
               key={c}
