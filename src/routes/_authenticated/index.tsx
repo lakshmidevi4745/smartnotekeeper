@@ -727,8 +727,63 @@ function NoteEditor({ noteId }: { noteId: string }) {
             contentEditable
             suppressContentEditableWarning
             spellCheck
-            onInput={captureFromEditable}
+            onInput={() => {
+              if (editableRef.current) ensureTrailingParagraph(editableRef.current);
+              captureFromEditable();
+            }}
             onBlur={() => pushHistory(content)}
+            onKeyDown={(e) => {
+              // Escape table on Enter at end of last cell
+              if (e.key === "Enter" && !e.shiftKey) {
+                const sel = window.getSelection();
+                if (!sel || sel.rangeCount === 0) return;
+                const node = sel.getRangeAt(0).startContainer;
+                const cell = (node.nodeType === 1 ? (node as Element) : node.parentElement)?.closest("td,th");
+                if (!cell) return;
+                const table = cell.closest("table");
+                const lastRow = table?.querySelector("tr:last-child");
+                const isLastCell = lastRow && cell === lastRow.lastElementChild;
+                if (isLastCell) {
+                  e.preventDefault();
+                  const p = document.createElement("p");
+                  p.innerHTML = "<br/>";
+                  table!.parentNode!.insertBefore(p, table!.nextSibling);
+                  const r = document.createRange();
+                  r.setStart(p, 0);
+                  r.collapse(true);
+                  sel.removeAllRanges();
+                  sel.addRange(r);
+                  captureFromEditable();
+                }
+              }
+            }}
+            onMouseDown={(e) => {
+              const root = editableRef.current;
+              if (!root) return;
+              const last = root.lastElementChild as HTMLElement | null;
+              if (!last) return;
+              const lastRect = last.getBoundingClientRect();
+              // Click below last block → ensure trailing paragraph and move caret there
+              if (e.clientY > lastRect.bottom) {
+                e.preventDefault();
+                let trailing = root.lastElementChild as HTMLElement | null;
+                if (!trailing || trailing.tagName !== "P") {
+                  trailing = document.createElement("p");
+                  trailing.innerHTML = "<br/>";
+                  root.appendChild(trailing);
+                }
+                root.focus();
+                const sel = window.getSelection();
+                if (sel) {
+                  const r = document.createRange();
+                  r.setStart(trailing, 0);
+                  r.collapse(true);
+                  sel.removeAllRanges();
+                  sel.addRange(r);
+                }
+                captureFromEditable();
+              }
+            }}
             onPaste={(e) => {
               const html = e.clipboardData.getData("text/html");
               if (!html) return; // let browser handle plain text natively
@@ -738,12 +793,14 @@ function NoteEditor({ noteId }: { noteId: string }) {
               } catch {
                 /* ignore */
               }
+              if (editableRef.current) ensureTrailingParagraph(editableRef.current);
               captureFromEditable();
             }}
             className="prose prose-slate dark:prose-invert mx-auto min-h-full max-w-3xl p-4 outline-none focus:outline-none sm:p-6 prose-headings:font-semibold prose-h1:text-3xl prose-h1:mt-6 prose-h1:mb-4 prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-3 prose-h3:text-xl prose-h3:mt-5 prose-h3:mb-2 prose-p:my-3 prose-p:leading-7 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-blockquote:border-l-4 prose-blockquote:border-primary/40 prose-blockquote:pl-4 prose-blockquote:italic prose-hr:my-6 prose-strong:font-semibold prose-a:text-primary"
           />
         </ScrollArea>
       </div>
+
 
       <AlertDialog open={rollbackOpen} onOpenChange={setRollbackOpen}>
         <AlertDialogContent>
