@@ -36,9 +36,7 @@ import {
 } from "@/lib/notes.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
@@ -425,14 +423,15 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
-  const [tab, setTab] = useState<"edit" | "preview">("preview");
 
   const undoStack = useRef<string[]>([]);
   const redoStack = useRef<string[]>([]);
   const lastPushedRef = useRef<string>("");
   const hydratedRef = useRef(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const previewRef = useRef<HTMLDivElement>(null);
+
+  const editableRef = useRef<HTMLDivElement>(null);
+  const hiddenRef = useRef<HTMLDivElement>(null);
+  const lastRenderedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!noteQ.data) return;
@@ -444,6 +443,19 @@ function NoteEditor({ noteId }: { noteId: string }) {
     lastPushedRef.current = noteQ.data.content;
     setSaveState("saved");
   }, [noteQ.data]);
+
+  // Sync rendered HTML into the editable div whenever content changes externally
+  // (initial load, undo/redo, rollback). Internal typing sets lastRenderedRef
+  // first to avoid wiping the user's caret.
+  useEffect(() => {
+    if (lastRenderedRef.current === content) return;
+    requestAnimationFrame(() => {
+      if (!hiddenRef.current || !editableRef.current) return;
+      const html = hiddenRef.current.innerHTML || "<p><br/></p>";
+      editableRef.current.innerHTML = html;
+      lastRenderedRef.current = content;
+    });
+  }, [content]);
 
   const pushHistory = useCallback((value: string) => {
     const last = lastPushedRef.current;
@@ -473,15 +485,18 @@ function NoteEditor({ noteId }: { noteId: string }) {
     [noteId, qc],
   );
 
-  const onContentChange = (v: string) => {
-    setContent(v);
-    setSaveState("dirty");
-    const last = lastPushedRef.current;
-    if (Math.abs(v.length - last.length) > 30 || /\s$/.test(v) !== /\s$/.test(last)) {
-      pushHistory(v);
-    }
-    scheduleSave({ content: v });
-  };
+  const onContentChange = useCallback(
+    (v: string) => {
+      setContent(v);
+      setSaveState("dirty");
+      const last = lastPushedRef.current;
+      if (Math.abs(v.length - last.length) > 30 || /\s$/.test(v) !== /\s$/.test(last)) {
+        pushHistory(v);
+      }
+      scheduleSave({ content: v });
+    },
+    [pushHistory, scheduleSave],
+  );
 
   const onTitleChange = (v: string) => {
     setTitle(v);
@@ -489,89 +504,83 @@ function NoteEditor({ noteId }: { noteId: string }) {
     scheduleSave({ title: v });
   };
 
-  const applyEdit = useCallback(
-    (transform: (sel: string) => { text: string; selectAfter?: [number, number] }) => {
-      const ta = textareaRef.current;
-      const start = ta?.selectionStart ?? content.length;
-      const end = ta?.selectionEnd ?? content.length;
-      const selected = content.slice(start, end);
-      const { text, selectAfter } = transform(selected);
-      const next = content.slice(0, start) + text + content.slice(end);
-      setContent(next);
-      setSaveState("dirty");
-      pushHistory(next);
-      scheduleSave({ content: next });
-      requestAnimationFrame(() => {
-        const el = textareaRef.current;
-        if (!el) return;
-        el.focus();
-        const [s, e] = selectAfter ?? [start + text.length, start + text.length];
-        el.setSelectionRange(s, e);
-      });
-    },
-    [content, pushHistory, scheduleSave],
-  );
+  // Capture current HTML from the editable, convert to markdown, and save —
+  // without triggering a re-render of the editable (which would lose the caret).
+  const captureFromEditable = useCallback(() => {
+    if (!editableRef.current) return;
+    const html = editableRef.current.innerHTML;
+    const md = htmlToMarkdown(html);
+    lastRenderedRef.current = md;
+    onContentChange(md);
+  }, [onContentChange]);
 
-  const applyToPreviewSelection = useCallback(
-    (wrap: (sel: string) => string): boolean => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) return false;
-      const selText = sel.toString();
-      if (!selText.trim()) return false;
-      const range = sel.getRangeAt(0);
-      if (!previewRef.current?.contains(range.commonAncestorContainer)) return false;
-      const idx = content.indexOf(selText);
-      if (idx === -1) return false;
-      if (content.indexOf(selText, idx + 1) !== -1) {
-        toast.error("Selection appears multiple times — refine it or use Edit mode");
-        return false;
-      }
-      const wrapped = wrap(selText);
-      const next = content.slice(0, idx) + wrapped + content.slice(idx + selText.length);
-      setContent(next);
-      setSaveState("dirty");
-      pushHistory(next);
-      scheduleSave({ content: next });
-      sel.removeAllRanges();
-      return true;
-    },
-    [content, pushHistory, scheduleSave],
-  );
-
-  const applyFormat = (htmlWrap: (s: string) => string, placeholder = "text") => {
-    if (tab === "preview") {
-      if (!applyToPreviewSelection(htmlWrap)) {
-        toast.message("Select text in the preview first");
-      }
-      return;
+  const runExec = (cmd: string, val?: string) => {
+    editableRef.current?.focus();
+    try {
+      document.execCommand(cmd, false, val);
+    } catch {
+      /* ignore */
     }
-    applyEdit((s) => ({ text: htmlWrap(s || placeholder) }));
+    captureFromEditable();
   };
 
-  const setFontSize = (size: string) =>
-    applyFormat((s) => `<span style="font-size:${size}">${s}</span>`);
-  const setTextColor = (color: string) =>
-    applyFormat((s) => `<span style="color:${color}">${s}</span>`);
-  const setBgColor = (color: string) =>
-    applyFormat(
-      (s) => `<span style="background-color:${color};padding:0 2px;border-radius:3px">${s}</span>`,
-    );
-  const insertBold = () => applyFormat((s) => `**${s}**`, "bold");
-  const insertItalic = () => applyFormat((s) => `*${s}*`, "italic");
+  const wrapSelectionWithStyle = (style: string) => {
+    editableRef.current?.focus();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      toast.message("Select some text first");
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    if (!editableRef.current?.contains(range.commonAncestorContainer)) return;
+    const span = document.createElement("span");
+    span.setAttribute("style", style);
+    try {
+      span.appendChild(range.extractContents());
+      range.insertNode(span);
+      sel.removeAllRanges();
+      const r = document.createRange();
+      r.selectNodeContents(span);
+      sel.addRange(r);
+    } catch {
+      /* ignore */
+    }
+    captureFromEditable();
+  };
+
+  const insertBold = () => runExec("bold");
+  const insertItalic = () => runExec("italic");
+  const setTextColor = (color: string) => runExec("foreColor", color);
+  const setBgColor = (color: string) => {
+    editableRef.current?.focus();
+    try {
+      if (!document.execCommand("hiliteColor", false, color)) {
+        document.execCommand("backColor", false, color);
+      }
+    } catch {
+      /* ignore */
+    }
+    captureFromEditable();
+  };
+  const setFontSize = (size: string) => wrapSelectionWithStyle(`font-size:${size}`);
+
   const insertTable = (rows: number, cols: number) => {
-    const header = "| " + Array.from({ length: cols }, (_, i) => `Header ${i + 1}`).join(" | ") + " |";
-    const sep = "| " + Array.from({ length: cols }, () => "---").join(" | ") + " |";
-    const body = Array.from({ length: cols }, () => "").length
-      ? Array.from({ length: rows }, () =>
-          "| " + Array.from({ length: cols }, () => "   ").join(" | ") + " |",
-        ).join("\n")
-      : "";
-    const table = `\n\n${header}\n${sep}\n${body}\n\n`;
-    const next = content + table;
-    setContent(next);
-    setSaveState("dirty");
-    pushHistory(next);
-    scheduleSave({ content: next });
+    editableRef.current?.focus();
+    let html = '<table><thead><tr>';
+    for (let c = 0; c < cols; c++) html += `<th>Header ${c + 1}</th>`;
+    html += '</tr></thead><tbody>';
+    for (let r = 0; r < rows; r++) {
+      html += '<tr>';
+      for (let c = 0; c < cols; c++) html += '<td>&nbsp;</td>';
+      html += '</tr>';
+    }
+    html += '</tbody></table><p><br/></p>';
+    try {
+      document.execCommand("insertHTML", false, html);
+    } catch {
+      /* ignore */
+    }
+    captureFromEditable();
   };
 
   const doUndo = () => {
@@ -702,67 +711,36 @@ function NoteEditor({ noteId }: { noteId: string }) {
             onPick={setBgColor}
           />
           <TableInsert onInsert={insertTable} />
-
-
-          <div className="ml-auto">
-            <Tabs value={tab} onValueChange={(v) => setTab(v as "edit" | "preview")}>
-              <TabsList className="h-7">
-                <TabsTrigger value="edit" className="text-xs">
-                  Edit
-                </TabsTrigger>
-                <TabsTrigger value="preview" className="text-xs">
-                  Preview
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
         </div>
       </TooltipProvider>
 
       <div className="flex-1 overflow-hidden">
-        {tab === "edit" ? (
-          <Textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => onContentChange(e.target.value)}
+        <ScrollArea className="h-full">
+          {/* Hidden renderer — produces formatted HTML from markdown source */}
+          <div ref={hiddenRef} className="hidden" aria-hidden>
+            <MarkdownView source={content} />
+          </div>
+          <div
+            ref={editableRef}
+            contentEditable
+            suppressContentEditableWarning
+            spellCheck
+            onInput={captureFromEditable}
             onBlur={() => pushHistory(content)}
             onPaste={(e) => {
               const html = e.clipboardData.getData("text/html");
-              if (!html) return;
+              if (!html) return; // let browser handle plain text natively
               e.preventDefault();
-              const md = htmlToMarkdown(html);
-              const ta = e.currentTarget;
-              const start = ta.selectionStart ?? content.length;
-              const end = ta.selectionEnd ?? content.length;
-              const next = content.slice(0, start) + md + content.slice(end);
-              onContentChange(next);
-              pushHistory(next);
+              try {
+                document.execCommand("insertHTML", false, html);
+              } catch {
+                /* ignore */
+              }
+              captureFromEditable();
             }}
-            placeholder="# Start writing markdown…&#10;&#10;Paste from Word / ChatGPT — formatting is preserved. Use ```python or ```sql code blocks."
-            className="h-full w-full resize-none rounded-none border-0 bg-background font-mono text-sm leading-relaxed focus-visible:ring-0"
+            className="prose prose-slate dark:prose-invert mx-auto min-h-full max-w-3xl p-4 outline-none focus:outline-none sm:p-6 prose-headings:font-semibold prose-h1:text-3xl prose-h1:mt-6 prose-h1:mb-4 prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-3 prose-h3:text-xl prose-h3:mt-5 prose-h3:mb-2 prose-p:my-3 prose-p:leading-7 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-blockquote:border-l-4 prose-blockquote:border-primary/40 prose-blockquote:pl-4 prose-blockquote:italic prose-hr:my-6 prose-strong:font-semibold prose-a:text-primary"
           />
-        ) : (
-          <ScrollArea className="h-full">
-            <div
-              ref={previewRef}
-              className="mx-auto max-w-3xl p-4 sm:p-6"
-              tabIndex={0}
-              onPaste={(e) => {
-                const html = e.clipboardData.getData("text/html");
-                const text = e.clipboardData.getData("text/plain");
-                const md = html ? htmlToMarkdown(html) : text;
-                if (!md) return;
-                e.preventDefault();
-                const next = content + (content && !content.endsWith("\n\n") ? "\n\n" : "") + md;
-                onContentChange(next);
-                pushHistory(next);
-                toast.success("Pasted formatted content");
-              }}
-            >
-              <MarkdownView source={content} />
-            </div>
-          </ScrollArea>
-        )}
+        </ScrollArea>
       </div>
 
       <AlertDialog open={rollbackOpen} onOpenChange={setRollbackOpen}>
