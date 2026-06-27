@@ -8,6 +8,18 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { z } from "zod";
+import TurndownService from "turndown";
+
+const turndown = new TurndownService({
+  headingStyle: "atx",
+  codeBlockStyle: "fenced",
+  bulletListMarker: "-",
+});
+turndown.keep(["table", "thead", "tbody", "tr", "th", "td"]);
+
+function htmlToMarkdown(html: string): string {
+  return turndown.turndown(html).replace(/\n{3,}/g, "\n\n").trim();
+}
 
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -384,7 +396,7 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
-  const [tab, setTab] = useState<"edit" | "preview">("edit");
+  const [tab, setTab] = useState<"edit" | "preview">("preview");
 
   // history stack
   const undoStack = useRef<string[]>([]);
@@ -581,12 +593,38 @@ function NoteEditor({ noteId, onInsert }: { noteId: string; onInsert: (md: strin
             value={content}
             onChange={(e) => onContentChange(e.target.value)}
             onBlur={() => pushHistory(content)}
-            placeholder="# Start writing markdown…&#10;&#10;Use ```python or ```sql code blocks. Ask the AI on the right for explanations and click Insert."
+            onPaste={(e) => {
+              const html = e.clipboardData.getData("text/html");
+              if (!html) return;
+              e.preventDefault();
+              const md = htmlToMarkdown(html);
+              const ta = e.currentTarget;
+              const start = ta.selectionStart ?? content.length;
+              const end = ta.selectionEnd ?? content.length;
+              const next = content.slice(0, start) + md + content.slice(end);
+              onContentChange(next);
+              pushHistory(next);
+            }}
+            placeholder="# Start writing markdown…&#10;&#10;Paste from Word / ChatGPT — formatting is preserved. Use ```python or ```sql code blocks."
             className="h-full w-full resize-none rounded-none border-0 bg-background font-mono text-sm leading-relaxed focus-visible:ring-0"
           />
         ) : (
           <ScrollArea className="h-full">
-            <div className="mx-auto max-w-3xl p-6">
+            <div
+              className="mx-auto max-w-3xl p-6"
+              tabIndex={0}
+              onPaste={(e) => {
+                const html = e.clipboardData.getData("text/html");
+                const text = e.clipboardData.getData("text/plain");
+                const md = html ? htmlToMarkdown(html) : text;
+                if (!md) return;
+                e.preventDefault();
+                const next = content + (content && !content.endsWith("\n\n") ? "\n\n" : "") + md;
+                onContentChange(next);
+                pushHistory(next);
+                toast.success("Pasted formatted content");
+              }}
+            >
               <MarkdownView source={content} />
             </div>
           </ScrollArea>
