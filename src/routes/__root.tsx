@@ -88,6 +88,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "Smart notes" },
       { name: "twitter:description", content: "Smart Notes AI is an intelligent notebook for organizing and retrieving technical documentation." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/cab5eb71-1781-46a0-bd7e-5bf17fab00c6" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/cab5eb71-1781-46a0-bd7e-5bf17fab00c6" },
     ],
     links: [
       {
