@@ -874,11 +874,13 @@ function ColorPicker({
   icon,
   onPick,
   swatches = TEXT_SWATCHES,
+  cols = 6,
 }: {
   label: string;
   icon: React.ReactNode;
   onPick: (color: string) => void;
   swatches?: string[];
+  cols?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState("#000000");
@@ -891,7 +893,7 @@ function ColorPicker({
       </PopoverTrigger>
       <PopoverContent className="w-auto p-2">
         <div className="mb-2 text-xs font-medium">{label}</div>
-        <div className="grid grid-cols-9 gap-1">
+        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
           {swatches.map((c) => (
             <button
               key={c}
