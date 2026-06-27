@@ -329,9 +329,20 @@ function AppPage() {
           <div className="flex flex-1 items-center justify-center text-center">
             <div>
               <NotebookPen className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                {activeNotebookId ? "Select or create a note" : "Create a notebook to begin"}
+              <p className="mb-4 text-sm text-muted-foreground">
+                {activeNotebookId ? "No note selected" : "Create a notebook to begin"}
               </p>
+              {activeNotebookId && (
+                <Button
+                  onClick={() =>
+                    newNoteM.mutate({ notebook_id: activeNotebookId, title: "Untitled" })
+                  }
+                  disabled={newNoteM.isPending}
+                >
+                  <FilePlus className="mr-2 h-4 w-4" />
+                  New note
+                </Button>
+              )}
             </div>
           </div>
         )}
