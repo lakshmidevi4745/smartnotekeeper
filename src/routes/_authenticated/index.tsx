@@ -43,7 +43,11 @@ import {
   getNote,
   commitNote,
   rollbackNote,
+  listDeletedNotebooks,
+  restoreNotebook,
+  purgeNotebook,
 } from "@/lib/notes.functions";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
