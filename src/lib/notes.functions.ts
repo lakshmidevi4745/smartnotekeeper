@@ -90,10 +90,14 @@ export const deleteNotebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: uuid }).parse(d))
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("notebooks").delete().eq("id", data.id);
+    const { error } = await context.supabase
+      .from("notebooks")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
 
 export const getNote = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
