@@ -466,6 +466,87 @@ function DeleteButton({ label, onConfirm }: { label: string; onConfirm: () => vo
   );
 }
 
+function TrashDialog({
+  onRestore,
+  onPurge,
+}: {
+  onRestore: (id: string) => void;
+  onPurge: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const deletedQ = useQuery({
+    queryKey: ["deletedNotebooks"],
+    queryFn: () => listDeletedNotebooks(),
+    enabled: open,
+  });
+  const items = (deletedQ.data ?? []) as { id: string; name: string; deleted_at: string }[];
+
+  const daysLeft = (iso: string) => {
+    const end = new Date(iso).getTime() + 30 * 24 * 60 * 60 * 1000;
+    return Math.max(0, Math.ceil((end - Date.now()) / (24 * 60 * 60 * 1000)));
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="icon" variant="ghost" className="h-6 w-6" title="Trash">
+          <Trash className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Trash</DialogTitle>
+          <DialogDescription>
+            Deleted notebooks are kept for 30 days, then permanently removed.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-80 space-y-1 overflow-y-auto">
+          {deletedQ.isLoading && (
+            <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+          )}
+          {!deletedQ.isLoading && items.length === 0 && (
+            <p className="py-6 text-center text-sm text-muted-foreground">Trash is empty.</p>
+          )}
+          {items.map((nb) => (
+            <div
+              key={nb.id}
+              className="flex items-center gap-2 rounded-md border p-2"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{nb.name}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  {daysLeft(nb.deleted_at)} day{daysLeft(nb.deleted_at) === 1 ? "" : "s"} left
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onRestore(nb.id)}
+                title="Restore"
+              >
+                <RotateCcw className="mr-1 h-3 w-3" /> Restore
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  if (window.confirm(`Permanently delete "${nb.name}"? This cannot be undone.`)) {
+                    onPurge(nb.id);
+                  }
+                }}
+                title="Delete forever"
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
 /* -------------------- Note Editor with undo/redo/commit/rollback -------------------- */
 
 function NoteEditor({ noteId }: { noteId: string }) {
