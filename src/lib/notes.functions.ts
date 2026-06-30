@@ -10,21 +10,59 @@ export const listNotebooks = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("notebooks")
       .select("id, name, created_at")
+      .is("deleted_at", null)
       .order("created_at", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
   });
+
+export const listDeletedNotebooks = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase
+      .from("notebooks")
+      .select("id, name, deleted_at")
+      .not("deleted_at", "is", null)
+      .gte("deleted_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+      .order("deleted_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const restoreNotebook = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("notebooks")
+      .update({ deleted_at: null })
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const purgeNotebook = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase.from("notebooks").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 
 export const listAllNotes = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("notes")
-      .select("id, notebook_id, title, updated_at")
+      .select("id, notebook_id, title, updated_at, notebooks!inner(deleted_at)")
+      .is("notebooks.deleted_at", null)
       .order("updated_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return (data ?? []).map(({ notebooks: _n, ...rest }) => rest);
   });
+
 
 export const createNotebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -52,10 +90,14 @@ export const deleteNotebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: uuid }).parse(d))
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("notebooks").delete().eq("id", data.id);
+    const { error } = await context.supabase
+      .from("notebooks")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
 
 export const getNote = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
