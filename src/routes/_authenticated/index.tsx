@@ -186,9 +186,30 @@ function AppPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notebooks"] });
       qc.invalidateQueries({ queryKey: ["notes"] });
+      qc.invalidateQueries({ queryKey: ["deletedNotebooks"] });
       navigate({ to: "/", search: {} });
+      toast.success("Notebook moved to Trash. Restore within 30 days.");
     },
   });
+
+  const restoreNotebookM = useMutation({
+    mutationFn: (id: string) => restoreNotebook({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notebooks"] });
+      qc.invalidateQueries({ queryKey: ["notes"] });
+      qc.invalidateQueries({ queryKey: ["deletedNotebooks"] });
+      toast.success("Notebook restored.");
+    },
+  });
+
+  const purgeNotebookM = useMutation({
+    mutationFn: (id: string) => purgeNotebook({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deletedNotebooks"] });
+      toast.success("Notebook permanently deleted.");
+    },
+  });
+
 
   const newNoteM = useMutation({
     mutationFn: (v: { notebook_id: string; title?: string; content?: string }) =>
