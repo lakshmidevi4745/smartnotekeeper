@@ -56,11 +56,13 @@ export const listAllNotes = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("notes")
-      .select("id, notebook_id, title, updated_at")
+      .select("id, notebook_id, title, updated_at, notebooks!inner(deleted_at)")
+      .is("notebooks.deleted_at", null)
       .order("updated_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return (data ?? []).map(({ notebooks: _n, ...rest }) => rest);
   });
+
 
 export const createNotebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
