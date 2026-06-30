@@ -271,10 +271,17 @@ function AppPage() {
       <div className="border-b p-3">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-xs font-semibold uppercase text-muted-foreground">Notebooks</span>
-          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleNewNotebook}>
-            <Plus className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-0.5">
+            <TrashDialog
+              onRestore={(id) => restoreNotebookM.mutate(id)}
+              onPurge={(id) => purgeNotebookM.mutate(id)}
+            />
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleNewNotebook}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
+
         <div className="space-y-0.5">
           {notebooks.map((nb) => {
             const active = nb.id === activeNotebookId;
