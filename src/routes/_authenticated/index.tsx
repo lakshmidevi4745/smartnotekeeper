@@ -46,6 +46,9 @@ import {
   listDeletedNotebooks,
   restoreNotebook,
   purgeNotebook,
+  listDeletedNotes,
+  restoreNote,
+  purgeNote,
 } from "@/lib/notes.functions";
 
 import { Button } from "@/components/ui/button";
@@ -210,6 +213,23 @@ function AppPage() {
     },
   });
 
+  const restoreNoteM = useMutation({
+    mutationFn: (id: string) => restoreNote({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notes"] });
+      qc.invalidateQueries({ queryKey: ["deletedNotes"] });
+      toast.success("Note restored.");
+    },
+  });
+
+  const purgeNoteM = useMutation({
+    mutationFn: (id: string) => purgeNote({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deletedNotes"] });
+      toast.success("Note permanently deleted.");
+    },
+  });
+
 
   const newNoteM = useMutation({
     mutationFn: (v: { notebook_id: string; title?: string; content?: string }) =>
@@ -224,7 +244,9 @@ function AppPage() {
     mutationFn: (id: string) => deleteNote({ data: { id } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notes"] });
+      qc.invalidateQueries({ queryKey: ["deletedNotes"] });
       navigate({ to: "/", search: { nb: activeNotebookId } });
+      toast.success("Note moved to Trash. Restore within 30 days.");
     },
   });
 
@@ -273,8 +295,10 @@ function AppPage() {
           <span className="text-xs font-semibold uppercase text-muted-foreground">Notebooks</span>
           <div className="flex items-center gap-0.5">
             <TrashDialog
-              onRestore={(id) => restoreNotebookM.mutate(id)}
-              onPurge={(id) => purgeNotebookM.mutate(id)}
+              onRestoreNotebook={(id) => restoreNotebookM.mutate(id)}
+              onPurgeNotebook={(id) => purgeNotebookM.mutate(id)}
+              onRestoreNote={(id) => restoreNoteM.mutate(id)}
+              onPurgeNote={(id) => purgeNoteM.mutate(id)}
             />
             <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleNewNotebook}>
               <Plus className="h-4 w-4" />
@@ -467,24 +491,50 @@ function DeleteButton({ label, onConfirm }: { label: string; onConfirm: () => vo
 }
 
 function TrashDialog({
-  onRestore,
-  onPurge,
+  onRestoreNotebook,
+  onPurgeNotebook,
+  onRestoreNote,
+  onPurgeNote,
 }: {
-  onRestore: (id: string) => void;
-  onPurge: (id: string) => void;
+  onRestoreNotebook: (id: string) => void;
+  onPurgeNotebook: (id: string) => void;
+  onRestoreNote: (id: string) => void;
+  onPurgeNote: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const deletedQ = useQuery({
+  const [tab, setTab] = useState<"notebooks" | "notes">("notebooks");
+
+  const deletedNotebooksQ = useQuery({
     queryKey: ["deletedNotebooks"],
     queryFn: () => listDeletedNotebooks(),
     enabled: open,
   });
-  const items = (deletedQ.data ?? []) as { id: string; name: string; deleted_at: string }[];
+  const deletedNotesQ = useQuery({
+    queryKey: ["deletedNotes"],
+    queryFn: () => listDeletedNotes(),
+    enabled: open,
+  });
+
+  const notebookItems = (deletedNotebooksQ.data ?? []) as {
+    id: string;
+    name: string;
+    deleted_at: string;
+  }[];
+  const noteItems = (deletedNotesQ.data ?? []) as {
+    id: string;
+    title: string;
+    deleted_at: string;
+    notebook_name: string;
+  }[];
 
   const daysLeft = (iso: string) => {
     const end = new Date(iso).getTime() + 30 * 24 * 60 * 60 * 1000;
     return Math.max(0, Math.ceil((end - Date.now()) / (24 * 60 * 60 * 1000)));
   };
+
+  const activeQ = tab === "notebooks" ? deletedNotebooksQ : deletedNotesQ;
+  const isEmpty =
+    tab === "notebooks" ? notebookItems.length === 0 : noteItems.length === 0;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -497,49 +547,83 @@ function TrashDialog({
         <DialogHeader>
           <DialogTitle>Trash</DialogTitle>
           <DialogDescription>
-            Deleted notebooks are kept for 30 days, then permanently removed.
+            Deleted items are kept for 30 days, then permanently removed.
           </DialogDescription>
         </DialogHeader>
+        <div className="mb-2 inline-flex rounded-md border p-0.5 text-xs">
+          <button
+            className={`rounded px-3 py-1 ${tab === "notebooks" ? "bg-primary text-primary-foreground" : ""}`}
+            onClick={() => setTab("notebooks")}
+          >
+            Notebooks
+          </button>
+          <button
+            className={`rounded px-3 py-1 ${tab === "notes" ? "bg-primary text-primary-foreground" : ""}`}
+            onClick={() => setTab("notes")}
+          >
+            Notes
+          </button>
+        </div>
         <div className="max-h-80 space-y-1 overflow-y-auto">
-          {deletedQ.isLoading && (
+          {activeQ.isLoading && (
             <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
           )}
-          {!deletedQ.isLoading && items.length === 0 && (
+          {!activeQ.isLoading && isEmpty && (
             <p className="py-6 text-center text-sm text-muted-foreground">Trash is empty.</p>
           )}
-          {items.map((nb) => (
-            <div
-              key={nb.id}
-              className="flex items-center gap-2 rounded-md border p-2"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{nb.name}</div>
-                <div className="text-[11px] text-muted-foreground">
-                  {daysLeft(nb.deleted_at)} day{daysLeft(nb.deleted_at) === 1 ? "" : "s"} left
+          {tab === "notebooks" &&
+            notebookItems.map((nb) => (
+              <div key={nb.id} className="flex items-center gap-2 rounded-md border p-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{nb.name}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {daysLeft(nb.deleted_at)} day{daysLeft(nb.deleted_at) === 1 ? "" : "s"} left
+                  </div>
                 </div>
+                <Button size="sm" variant="outline" onClick={() => onRestoreNotebook(nb.id)}>
+                  <RotateCcw className="mr-1 h-3 w-3" /> Restore
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    if (window.confirm(`Permanently delete "${nb.name}"? This cannot be undone.`)) {
+                      onPurgeNotebook(nb.id);
+                    }
+                  }}
+                  title="Delete forever"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onRestore(nb.id)}
-                title="Restore"
-              >
-                <RotateCcw className="mr-1 h-3 w-3" /> Restore
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => {
-                  if (window.confirm(`Permanently delete "${nb.name}"? This cannot be undone.`)) {
-                    onPurge(nb.id);
-                  }
-                }}
-                title="Delete forever"
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
-            </div>
-          ))}
+            ))}
+          {tab === "notes" &&
+            noteItems.map((n) => (
+              <div key={n.id} className="flex items-center gap-2 rounded-md border p-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{n.title || "Untitled"}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {n.notebook_name} · {daysLeft(n.deleted_at)} day
+                    {daysLeft(n.deleted_at) === 1 ? "" : "s"} left
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => onRestoreNote(n.id)}>
+                  <RotateCcw className="mr-1 h-3 w-3" /> Restore
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    if (window.confirm(`Permanently delete "${n.title}"? This cannot be undone.`)) {
+                      onPurgeNote(n.id);
+                    }
+                  }}
+                  title="Delete forever"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
         </div>
       </DialogContent>
     </Dialog>
@@ -849,8 +933,9 @@ function NoteEditor({ noteId }: { noteId: string }) {
         </div>
       </TooltipProvider>
 
-      <div className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full">
+      <div className="flex flex-1 overflow-hidden">
+        <ScrollArea className="h-full flex-1">
+
           {/* Hidden renderer — produces formatted HTML from markdown source */}
           <div ref={hiddenRef} className="hidden" aria-hidden>
             <MarkdownView source={content} />
@@ -905,7 +990,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   trailing.innerHTML = "<br/>";
                   root.appendChild(trailing);
                 }
-                root.focus();
+                root.focus({ preventScroll: true });
                 const sel = window.getSelection();
                 if (sel) {
                   const r = document.createRange();
@@ -932,7 +1017,9 @@ function NoteEditor({ noteId }: { noteId: string }) {
             className="prose prose-slate dark:prose-invert mx-auto min-h-full max-w-3xl p-4 outline-none focus:outline-none sm:p-6 prose-headings:font-semibold prose-h1:text-3xl prose-h1:mt-6 prose-h1:mb-4 prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-3 prose-h3:text-xl prose-h3:mt-5 prose-h3:mb-2 prose-p:my-3 prose-p:leading-7 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-blockquote:border-l-4 prose-blockquote:border-primary/40 prose-blockquote:pl-4 prose-blockquote:italic prose-hr:my-6 prose-strong:font-semibold prose-a:text-primary"
           />
         </ScrollArea>
+        <TocPanel content={content} editableRef={editableRef} />
       </div>
+
 
 
       <AlertDialog open={rollbackOpen} onOpenChange={setRollbackOpen}>
@@ -1118,5 +1205,115 @@ function TableInsert({ onInsert }: { onInsert: (rows: number, cols: number) => v
         </Button>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/* -------------------- Dynamic Table of Contents -------------------- */
+
+type TocItem = { level: number; text: string; index: number };
+
+function parseToc(md: string): TocItem[] {
+  const items: TocItem[] = [];
+  const lines = md.split("\n");
+  let inFence = false;
+  let idx = 0;
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const m = /^(#{1,3})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (m) {
+      items.push({ level: m[1].length, text: m[2].trim(), index: idx++ });
+    }
+  }
+  return items;
+}
+
+function TocPanel({
+  content,
+  editableRef,
+}: {
+  content: string;
+  editableRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const items = useMemo(() => parseToc(content), [content]);
+  const [open, setOpen] = useState(true);
+
+  const jumpTo = (item: TocItem) => {
+    const root = editableRef.current;
+    if (!root) return;
+    const headings = Array.from(
+      root.querySelectorAll<HTMLElement>("h1, h2, h3"),
+    );
+    // Prefer same-level match by index; else fall back to text match.
+    const sameLevel = headings.filter(
+      (h) => Number(h.tagName.substring(1)) === item.level,
+    );
+    let target =
+      sameLevel[
+        items.filter((i) => i.level === item.level).findIndex((i) => i === item)
+      ];
+    if (!target) {
+      target = headings.find(
+        (h) => h.textContent?.trim() === item.text,
+      ) as HTMLElement | undefined ?? headings[item.index];
+    }
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.classList.add("ring-2", "ring-primary/40", "rounded");
+    setTimeout(() => {
+      target?.classList.remove("ring-2", "ring-primary/40", "rounded");
+    }, 1200);
+  };
+
+  return (
+    <aside
+      className={`hidden shrink-0 border-l bg-muted/20 lg:flex lg:flex-col ${open ? "w-60" : "w-10"}`}
+    >
+      <div className="flex items-center justify-between border-b px-2 py-2">
+        {open && (
+          <span className="text-xs font-semibold uppercase text-muted-foreground">
+            Contents
+          </span>
+        )}
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6"
+          onClick={() => setOpen((v) => !v)}
+          title={open ? "Hide contents" : "Show contents"}
+        >
+          <Menu className="h-4 w-4" />
+        </Button>
+      </div>
+      {open && (
+        <ScrollArea className="flex-1">
+          <nav className="p-2">
+            {items.length === 0 ? (
+              <p className="px-2 py-4 text-xs text-muted-foreground">
+                Add headings (#, ##, ###) to see them here.
+              </p>
+            ) : (
+              <ul className="space-y-0.5 text-sm">
+                {items.map((it, i) => (
+                  <li key={i}>
+                    <button
+                      onClick={() => jumpTo(it)}
+                      className="w-full truncate rounded px-2 py-1 text-left hover:bg-accent"
+                      style={{ paddingLeft: `${(it.level - 1) * 12 + 8}px` }}
+                      title={it.text}
+                    >
+                      {it.text}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </nav>
+        </ScrollArea>
+      )}
+    </aside>
   );
 }

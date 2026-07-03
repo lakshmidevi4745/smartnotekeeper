@@ -57,10 +57,52 @@ export const listAllNotes = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("notes")
       .select("id, notebook_id, title, updated_at, notebooks!inner(deleted_at)")
+      .is("deleted_at", null)
       .is("notebooks.deleted_at", null)
       .order("updated_at", { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []).map(({ notebooks: _n, ...rest }) => rest);
+  });
+
+export const listDeletedNotes = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase
+      .from("notes")
+      .select("id, notebook_id, title, deleted_at, notebooks!inner(name, deleted_at)")
+      .not("deleted_at", "is", null)
+      .is("notebooks.deleted_at", null)
+      .gte("deleted_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+      .order("deleted_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => ({
+      id: r.id,
+      notebook_id: r.notebook_id,
+      title: r.title,
+      deleted_at: r.deleted_at,
+      notebook_name: (r.notebooks as unknown as { name: string }).name,
+    }));
+  });
+
+export const restoreNote = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("notes")
+      .update({ deleted_at: null })
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const purgeNote = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase.from("notes").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 
@@ -162,7 +204,10 @@ export const deleteNote = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: uuid }).parse(d))
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("notes").delete().eq("id", data.id);
+    const { error } = await context.supabase
+      .from("notes")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

@@ -88,6 +88,7 @@ export type Database = {
           committed_content: string
           content: string
           created_at: string
+          deleted_at: string | null
           id: string
           notebook_id: string
           title: string
@@ -99,6 +100,7 @@ export type Database = {
           committed_content?: string
           content?: string
           created_at?: string
+          deleted_at?: string | null
           id?: string
           notebook_id: string
           title?: string
@@ -110,6 +112,7 @@ export type Database = {
           committed_content?: string
           content?: string
           created_at?: string
+          deleted_at?: string | null
           id?: string
           notebook_id?: string
           title?: string
@@ -132,6 +135,7 @@ export type Database = {
     }
     Functions: {
       purge_old_deleted_notebooks: { Args: never; Returns: undefined }
+      purge_old_deleted_notes: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
