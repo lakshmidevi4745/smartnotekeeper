@@ -1207,3 +1207,113 @@ function TableInsert({ onInsert }: { onInsert: (rows: number, cols: number) => v
     </Popover>
   );
 }
+
+/* -------------------- Dynamic Table of Contents -------------------- */
+
+type TocItem = { level: number; text: string; index: number };
+
+function parseToc(md: string): TocItem[] {
+  const items: TocItem[] = [];
+  const lines = md.split("\n");
+  let inFence = false;
+  let idx = 0;
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const m = /^(#{1,3})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (m) {
+      items.push({ level: m[1].length, text: m[2].trim(), index: idx++ });
+    }
+  }
+  return items;
+}
+
+function TocPanel({
+  content,
+  editableRef,
+}: {
+  content: string;
+  editableRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const items = useMemo(() => parseToc(content), [content]);
+  const [open, setOpen] = useState(true);
+
+  const jumpTo = (item: TocItem) => {
+    const root = editableRef.current;
+    if (!root) return;
+    const headings = Array.from(
+      root.querySelectorAll<HTMLElement>("h1, h2, h3"),
+    );
+    // Prefer same-level match by index; else fall back to text match.
+    const sameLevel = headings.filter(
+      (h) => Number(h.tagName.substring(1)) === item.level,
+    );
+    let target =
+      sameLevel[
+        items.filter((i) => i.level === item.level).findIndex((i) => i === item)
+      ];
+    if (!target) {
+      target = headings.find(
+        (h) => h.textContent?.trim() === item.text,
+      ) as HTMLElement | undefined ?? headings[item.index];
+    }
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.classList.add("ring-2", "ring-primary/40", "rounded");
+    setTimeout(() => {
+      target?.classList.remove("ring-2", "ring-primary/40", "rounded");
+    }, 1200);
+  };
+
+  return (
+    <aside
+      className={`hidden shrink-0 border-l bg-muted/20 lg:flex lg:flex-col ${open ? "w-60" : "w-10"}`}
+    >
+      <div className="flex items-center justify-between border-b px-2 py-2">
+        {open && (
+          <span className="text-xs font-semibold uppercase text-muted-foreground">
+            Contents
+          </span>
+        )}
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6"
+          onClick={() => setOpen((v) => !v)}
+          title={open ? "Hide contents" : "Show contents"}
+        >
+          <Menu className="h-4 w-4" />
+        </Button>
+      </div>
+      {open && (
+        <ScrollArea className="flex-1">
+          <nav className="p-2">
+            {items.length === 0 ? (
+              <p className="px-2 py-4 text-xs text-muted-foreground">
+                Add headings (#, ##, ###) to see them here.
+              </p>
+            ) : (
+              <ul className="space-y-0.5 text-sm">
+                {items.map((it, i) => (
+                  <li key={i}>
+                    <button
+                      onClick={() => jumpTo(it)}
+                      className="w-full truncate rounded px-2 py-1 text-left hover:bg-accent"
+                      style={{ paddingLeft: `${(it.level - 1) * 12 + 8}px` }}
+                      title={it.text}
+                    >
+                      {it.text}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </nav>
+        </ScrollArea>
+      )}
+    </aside>
+  );
+}
