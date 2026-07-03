@@ -989,7 +989,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   trailing.innerHTML = "<br/>";
                   root.appendChild(trailing);
                 }
-                root.focus();
+                root.focus({ preventScroll: true });
                 const sel = window.getSelection();
                 if (sel) {
                   const r = document.createRange();
