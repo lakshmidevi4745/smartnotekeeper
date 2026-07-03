@@ -244,7 +244,9 @@ function AppPage() {
     mutationFn: (id: string) => deleteNote({ data: { id } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notes"] });
+      qc.invalidateQueries({ queryKey: ["deletedNotes"] });
       navigate({ to: "/", search: { nb: activeNotebookId } });
+      toast.success("Note moved to Trash. Restore within 30 days.");
     },
   });
 
