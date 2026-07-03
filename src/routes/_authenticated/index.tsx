@@ -295,8 +295,10 @@ function AppPage() {
           <span className="text-xs font-semibold uppercase text-muted-foreground">Notebooks</span>
           <div className="flex items-center gap-0.5">
             <TrashDialog
-              onRestore={(id) => restoreNotebookM.mutate(id)}
-              onPurge={(id) => purgeNotebookM.mutate(id)}
+              onRestoreNotebook={(id) => restoreNotebookM.mutate(id)}
+              onPurgeNotebook={(id) => purgeNotebookM.mutate(id)}
+              onRestoreNote={(id) => restoreNoteM.mutate(id)}
+              onPurgeNote={(id) => purgeNoteM.mutate(id)}
             />
             <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleNewNotebook}>
               <Plus className="h-4 w-4" />
