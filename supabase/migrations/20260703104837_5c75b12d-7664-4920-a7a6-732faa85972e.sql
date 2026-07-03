@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.purge_old_deleted_notes() FROM PUBLIC, anon, authenticated;
