@@ -213,6 +213,23 @@ function AppPage() {
     },
   });
 
+  const restoreNoteM = useMutation({
+    mutationFn: (id: string) => restoreNote({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notes"] });
+      qc.invalidateQueries({ queryKey: ["deletedNotes"] });
+      toast.success("Note restored.");
+    },
+  });
+
+  const purgeNoteM = useMutation({
+    mutationFn: (id: string) => purgeNote({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deletedNotes"] });
+      toast.success("Note permanently deleted.");
+    },
+  });
+
 
   const newNoteM = useMutation({
     mutationFn: (v: { notebook_id: string; title?: string; content?: string }) =>
