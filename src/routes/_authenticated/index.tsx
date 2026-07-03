@@ -491,24 +491,50 @@ function DeleteButton({ label, onConfirm }: { label: string; onConfirm: () => vo
 }
 
 function TrashDialog({
-  onRestore,
-  onPurge,
+  onRestoreNotebook,
+  onPurgeNotebook,
+  onRestoreNote,
+  onPurgeNote,
 }: {
-  onRestore: (id: string) => void;
-  onPurge: (id: string) => void;
+  onRestoreNotebook: (id: string) => void;
+  onPurgeNotebook: (id: string) => void;
+  onRestoreNote: (id: string) => void;
+  onPurgeNote: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const deletedQ = useQuery({
+  const [tab, setTab] = useState<"notebooks" | "notes">("notebooks");
+
+  const deletedNotebooksQ = useQuery({
     queryKey: ["deletedNotebooks"],
     queryFn: () => listDeletedNotebooks(),
     enabled: open,
   });
-  const items = (deletedQ.data ?? []) as { id: string; name: string; deleted_at: string }[];
+  const deletedNotesQ = useQuery({
+    queryKey: ["deletedNotes"],
+    queryFn: () => listDeletedNotes(),
+    enabled: open,
+  });
+
+  const notebookItems = (deletedNotebooksQ.data ?? []) as {
+    id: string;
+    name: string;
+    deleted_at: string;
+  }[];
+  const noteItems = (deletedNotesQ.data ?? []) as {
+    id: string;
+    title: string;
+    deleted_at: string;
+    notebook_name: string;
+  }[];
 
   const daysLeft = (iso: string) => {
     const end = new Date(iso).getTime() + 30 * 24 * 60 * 60 * 1000;
     return Math.max(0, Math.ceil((end - Date.now()) / (24 * 60 * 60 * 1000)));
   };
+
+  const activeQ = tab === "notebooks" ? deletedNotebooksQ : deletedNotesQ;
+  const isEmpty =
+    tab === "notebooks" ? notebookItems.length === 0 : noteItems.length === 0;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -521,49 +547,83 @@ function TrashDialog({
         <DialogHeader>
           <DialogTitle>Trash</DialogTitle>
           <DialogDescription>
-            Deleted notebooks are kept for 30 days, then permanently removed.
+            Deleted items are kept for 30 days, then permanently removed.
           </DialogDescription>
         </DialogHeader>
+        <div className="mb-2 inline-flex rounded-md border p-0.5 text-xs">
+          <button
+            className={`rounded px-3 py-1 ${tab === "notebooks" ? "bg-primary text-primary-foreground" : ""}`}
+            onClick={() => setTab("notebooks")}
+          >
+            Notebooks
+          </button>
+          <button
+            className={`rounded px-3 py-1 ${tab === "notes" ? "bg-primary text-primary-foreground" : ""}`}
+            onClick={() => setTab("notes")}
+          >
+            Notes
+          </button>
+        </div>
         <div className="max-h-80 space-y-1 overflow-y-auto">
-          {deletedQ.isLoading && (
+          {activeQ.isLoading && (
             <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
           )}
-          {!deletedQ.isLoading && items.length === 0 && (
+          {!activeQ.isLoading && isEmpty && (
             <p className="py-6 text-center text-sm text-muted-foreground">Trash is empty.</p>
           )}
-          {items.map((nb) => (
-            <div
-              key={nb.id}
-              className="flex items-center gap-2 rounded-md border p-2"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{nb.name}</div>
-                <div className="text-[11px] text-muted-foreground">
-                  {daysLeft(nb.deleted_at)} day{daysLeft(nb.deleted_at) === 1 ? "" : "s"} left
+          {tab === "notebooks" &&
+            notebookItems.map((nb) => (
+              <div key={nb.id} className="flex items-center gap-2 rounded-md border p-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{nb.name}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {daysLeft(nb.deleted_at)} day{daysLeft(nb.deleted_at) === 1 ? "" : "s"} left
+                  </div>
                 </div>
+                <Button size="sm" variant="outline" onClick={() => onRestoreNotebook(nb.id)}>
+                  <RotateCcw className="mr-1 h-3 w-3" /> Restore
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    if (window.confirm(`Permanently delete "${nb.name}"? This cannot be undone.`)) {
+                      onPurgeNotebook(nb.id);
+                    }
+                  }}
+                  title="Delete forever"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onRestore(nb.id)}
-                title="Restore"
-              >
-                <RotateCcw className="mr-1 h-3 w-3" /> Restore
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => {
-                  if (window.confirm(`Permanently delete "${nb.name}"? This cannot be undone.`)) {
-                    onPurge(nb.id);
-                  }
-                }}
-                title="Delete forever"
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
-            </div>
-          ))}
+            ))}
+          {tab === "notes" &&
+            noteItems.map((n) => (
+              <div key={n.id} className="flex items-center gap-2 rounded-md border p-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{n.title || "Untitled"}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {n.notebook_name} · {daysLeft(n.deleted_at)} day
+                    {daysLeft(n.deleted_at) === 1 ? "" : "s"} left
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => onRestoreNote(n.id)}>
+                  <RotateCcw className="mr-1 h-3 w-3" /> Restore
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    if (window.confirm(`Permanently delete "${n.title}"? This cannot be undone.`)) {
+                      onPurgeNote(n.id);
+                    }
+                  }}
+                  title="Delete forever"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
         </div>
       </DialogContent>
     </Dialog>
