@@ -933,8 +933,9 @@ function NoteEditor({ noteId }: { noteId: string }) {
         </div>
       </TooltipProvider>
 
-      <div className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full">
+      <div className="flex flex-1 overflow-hidden">
+        <ScrollArea className="h-full flex-1">
+
           {/* Hidden renderer — produces formatted HTML from markdown source */}
           <div ref={hiddenRef} className="hidden" aria-hidden>
             <MarkdownView source={content} />
