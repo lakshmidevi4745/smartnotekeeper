@@ -46,6 +46,9 @@ import {
   listDeletedNotebooks,
   restoreNotebook,
   purgeNotebook,
+  listDeletedNotes,
+  restoreNote,
+  purgeNote,
 } from "@/lib/notes.functions";
 
 import { Button } from "@/components/ui/button";
