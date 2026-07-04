@@ -505,14 +505,17 @@ function TrashDialog({
   onPurgeNotebook,
   onRestoreNote,
   onPurgeNote,
+  defaultTab = "notebooks",
 }: {
   onRestoreNotebook: (id: string) => void;
   onPurgeNotebook: (id: string) => void;
   onRestoreNote: (id: string) => void;
   onPurgeNote: (id: string) => void;
+  defaultTab?: "notebooks" | "notes";
 }) {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"notebooks" | "notes">("notebooks");
+  const [tab, setTab] = useState<"notebooks" | "notes">(defaultTab);
+
 
   const deletedNotebooksQ = useQuery({
     queryKey: ["deletedNotebooks"],
