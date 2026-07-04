@@ -350,19 +350,29 @@ function AppPage() {
         </div>
         <div className="flex items-center justify-between px-3 py-2">
           <span className="text-xs font-semibold uppercase text-muted-foreground">Notes</span>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6"
-            disabled={!activeNotebookId}
-            onClick={() =>
-              activeNotebookId &&
-              newNoteM.mutate({ notebook_id: activeNotebookId, title: "Untitled" })
-            }
-          >
-            <FilePlus className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-0.5">
+            <TrashDialog
+              defaultTab="notes"
+              onRestoreNotebook={(id) => restoreNotebookM.mutate(id)}
+              onPurgeNotebook={(id) => purgeNotebookM.mutate(id)}
+              onRestoreNote={(id) => restoreNoteM.mutate(id)}
+              onPurgeNote={(id) => purgeNoteM.mutate(id)}
+            />
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6"
+              disabled={!activeNotebookId}
+              onClick={() =>
+                activeNotebookId &&
+                newNoteM.mutate({ notebook_id: activeNotebookId, title: "Untitled" })
+              }
+            >
+              <FilePlus className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
+
         <ScrollArea className="flex-1">
           <div className="space-y-0.5 px-2 pb-3">
             {filteredNotes.map((note) => {
