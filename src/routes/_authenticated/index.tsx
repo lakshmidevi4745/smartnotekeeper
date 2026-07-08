@@ -762,6 +762,12 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const pushHistory = useCallback((value: string) => {
     const last = lastPushedRef.current;
     if (value === last) return;
+    if (value.length > LARGE_CONTENT_LIMIT || last.length > LARGE_CONTENT_LIMIT) {
+      undoStack.current = [value];
+      redoStack.current = [];
+      lastPushedRef.current = value;
+      return;
+    }
     undoStack.current.push(value);
     if (undoStack.current.length > 100) undoStack.current.shift();
     redoStack.current = [];
@@ -806,6 +812,23 @@ function NoteEditor({ noteId }: { noteId: string }) {
     scheduleSave({ title: v });
   };
 
+  const isLargeDocument = content.length >= LARGE_CONTENT_LIMIT;
+
+  const onPlainTextChange = useCallback(
+    (v: string) => {
+      onContentChange(v);
+      if (v.length < LARGE_CONTENT_LIMIT) {
+        setExternalContent(v);
+        lastRenderedRef.current = null;
+        largePasteRef.current = false;
+      } else {
+        largePasteRef.current = true;
+        lastRenderedRef.current = v;
+      }
+    },
+    [onContentChange],
+  );
+
   // Capture current HTML from the editable, convert to markdown, and save —
   // without triggering a re-render of the editable (which would lose the caret).
   // Debounced capture: converting a very large innerHTML to markdown is
@@ -830,6 +853,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
 
   const runExec = (cmd: string, val?: string) => {
+    if (isLargeDocument) return;
     editableRef.current?.focus();
     try {
       document.execCommand(cmd, false, val);
@@ -840,6 +864,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   };
 
   const wrapSelectionWithStyle = (style: string) => {
+    if (isLargeDocument) return;
     editableRef.current?.focus();
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
@@ -880,6 +905,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const setFontSize = (size: string) => wrapSelectionWithStyle(`font-size:${size}`);
 
   const insertTable = (rows: number, cols: number) => {
+    if (isLargeDocument) return;
     editableRef.current?.focus();
     let html = '<table><thead><tr>';
     for (let c = 0; c < cols; c++) html += `<th>Header ${c + 1}</th>`;
