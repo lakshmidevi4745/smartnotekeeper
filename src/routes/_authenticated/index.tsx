@@ -705,6 +705,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const editableRef = useRef<HTMLDivElement>(null);
   const hiddenRef = useRef<HTMLDivElement>(null);
   const lastRenderedRef = useRef<string | null>(null);
+  const largePasteRef = useRef(false);
 
   useEffect(() => {
     if (!noteQ.data) return;
@@ -725,7 +726,13 @@ function NoteEditor({ noteId }: { noteId: string }) {
     if (lastRenderedRef.current === externalContent) return;
     requestAnimationFrame(() => {
       if (!hiddenRef.current || !editableRef.current) return;
-      const html = hiddenRef.current.innerHTML || "<p><br/></p>";
+      const html =
+        externalContent.length > LARGE_CONTENT_LIMIT
+          ? `<pre>${externalContent
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")}</pre><p><br/></p>`
+          : hiddenRef.current.innerHTML || "<p><br/></p>";
       editableRef.current.innerHTML = html;
       ensureTrailingParagraph(editableRef.current);
       lastRenderedRef.current = externalContent;
@@ -790,9 +797,13 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const captureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runCapture = useCallback(() => {
     if (!editableRef.current) return;
-    const html = editableRef.current.innerHTML;
-    const md = htmlToMarkdown(html);
+    const textSize = editableRef.current.textContent?.length ?? 0;
+    const md =
+      largePasteRef.current || textSize > LARGE_CONTENT_LIMIT
+        ? editableToPlainText(editableRef.current)
+        : htmlToMarkdown(editableRef.current.innerHTML);
     lastRenderedRef.current = md;
+    largePasteRef.current = md.length > LARGE_CONTENT_LIMIT;
     onContentChange(md);
   }, [onContentChange]);
   const captureFromEditable = useCallback(() => {
