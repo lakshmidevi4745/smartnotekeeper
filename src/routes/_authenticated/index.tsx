@@ -838,6 +838,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
     const prev = undoStack.current[undoStack.current.length - 1];
     lastPushedRef.current = prev;
     setContent(prev);
+    setExternalContent(prev);
     scheduleSave({ content: prev });
   };
 
@@ -847,6 +848,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
     undoStack.current.push(next);
     lastPushedRef.current = next;
     setContent(next);
+    setExternalContent(next);
     scheduleSave({ content: next });
   };
 
@@ -877,6 +879,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
     onSuccess: (res) => {
       const c = res?.content ?? "";
       setContent(c);
+      setExternalContent(c);
       pushHistory(c);
       toast.success("Rolled back to last commit");
       qc.invalidateQueries({ queryKey: ["note", noteId] });
@@ -967,7 +970,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
           {/* Hidden renderer — produces formatted HTML from markdown source */}
           <div ref={hiddenRef} className="hidden" aria-hidden>
-            <MarkdownView source={content} />
+            <MarkdownView source={externalContent} />
           </div>
           <div
             ref={editableRef}
