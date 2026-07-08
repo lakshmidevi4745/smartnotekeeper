@@ -745,13 +745,22 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   // Capture current HTML from the editable, convert to markdown, and save —
   // without triggering a re-render of the editable (which would lose the caret).
-  const captureFromEditable = useCallback(() => {
+  // Debounced capture: converting a very large innerHTML to markdown is
+  // expensive; coalesce rapid input/paste events so we don't block the UI
+  // on every keystroke.
+  const captureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runCapture = useCallback(() => {
     if (!editableRef.current) return;
     const html = editableRef.current.innerHTML;
     const md = htmlToMarkdown(html);
     lastRenderedRef.current = md;
     onContentChange(md);
   }, [onContentChange]);
+  const captureFromEditable = useCallback(() => {
+    if (captureTimer.current) clearTimeout(captureTimer.current);
+    captureTimer.current = setTimeout(runCapture, 200);
+  }, [runCapture]);
+
 
   const runExec = (cmd: string, val?: string) => {
     editableRef.current?.focus();
