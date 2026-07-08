@@ -1020,7 +1020,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
           {/* Hidden renderer — produces formatted HTML from markdown source */}
           <div ref={hiddenRef} className="hidden" aria-hidden>
-            <MarkdownView source={externalContent} />
+            {externalContent.length <= LARGE_CONTENT_LIMIT && <MarkdownView source={externalContent} />}
           </div>
           <div
             ref={editableRef}
@@ -1359,7 +1359,10 @@ function TocPanel({
   content: string;
   editableRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const items = useMemo(() => parseToc(content), [content]);
+  const items = useMemo(
+    () => (content.length > LARGE_TOC_PARSE_LIMIT ? [] : parseToc(content)),
+    [content],
+  );
   const [open, setOpen] = useState(true);
 
   const jumpTo = (item: TocItem) => {
