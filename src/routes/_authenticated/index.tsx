@@ -652,6 +652,10 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  // Separate source that drives the hidden MarkdownView -> editable sync.
+  // Only updated on external changes (initial load, undo/redo, rollback) so
+  // typing/pasting large content does NOT re-run ReactMarkdown on every keystroke.
+  const [externalContent, setExternalContent] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
 
   const undoStack = useRef<string[]>([]);
@@ -668,25 +672,28 @@ function NoteEditor({ noteId }: { noteId: string }) {
     hydratedRef.current = true;
     setTitle(noteQ.data.title);
     setContent(noteQ.data.content);
+    setExternalContent(noteQ.data.content);
     undoStack.current = [noteQ.data.content];
     redoStack.current = [];
     lastPushedRef.current = noteQ.data.content;
     setSaveState("saved");
   }, [noteQ.data]);
 
-  // Sync rendered HTML into the editable div whenever content changes externally
+  // Sync rendered HTML into the editable div whenever externalContent changes
   // (initial load, undo/redo, rollback). Internal typing sets lastRenderedRef
   // first to avoid wiping the user's caret.
   useEffect(() => {
-    if (lastRenderedRef.current === content) return;
+    if (lastRenderedRef.current === externalContent) return;
     requestAnimationFrame(() => {
       if (!hiddenRef.current || !editableRef.current) return;
       const html = hiddenRef.current.innerHTML || "<p><br/></p>";
       editableRef.current.innerHTML = html;
       ensureTrailingParagraph(editableRef.current);
-      lastRenderedRef.current = content;
+      lastRenderedRef.current = externalContent;
     });
-  }, [content]);
+  }, [externalContent]);
+
+
 
 
   const pushHistory = useCallback((value: string) => {
