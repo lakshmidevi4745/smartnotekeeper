@@ -706,6 +706,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const hiddenRef = useRef<HTMLDivElement>(null);
   const lastRenderedRef = useRef<string | null>(null);
   const largePasteRef = useRef(false);
+  const bulkPasteRef = useRef(false);
 
   useEffect(() => {
     if (!noteQ.data) return;
@@ -1028,6 +1029,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
             suppressContentEditableWarning
             spellCheck
             onInput={() => {
+              if (bulkPasteRef.current) return;
               if (editableRef.current) ensureTrailingParagraph(editableRef.current);
               captureFromEditable();
             }}
@@ -1093,6 +1095,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
               if (text && text.length >= LARGE_PASTE_LIMIT) {
                 e.preventDefault();
                 largePasteRef.current = true;
+                bulkPasteRef.current = true;
                 const current = editableToPlainText(editableRef.current!);
                 const selection = window.getSelection();
                 const hasLocalSelection =
@@ -1108,16 +1111,23 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
                 void (async () => {
                   const root = editableRef.current;
-                  if (!root) return;
-                  for (let i = 0; i < text.length; i += LARGE_PASTE_CHUNK_SIZE) {
-                    document.execCommand("insertText", false, text.slice(i, i + LARGE_PASTE_CHUNK_SIZE));
-                    if (i + LARGE_PASTE_CHUNK_SIZE < text.length) await waitForNextFrame();
+                  if (!root) {
+                    bulkPasteRef.current = false;
+                    return;
                   }
-                  ensureTrailingParagraph(root);
-                  const md = nextContent ?? editableToPlainText(root);
-                  lastRenderedRef.current = md;
-                  largePasteRef.current = md.length > LARGE_CONTENT_LIMIT;
-                  onContentChange(md);
+                  try {
+                    for (let i = 0; i < text.length; i += LARGE_PASTE_CHUNK_SIZE) {
+                      document.execCommand("insertText", false, text.slice(i, i + LARGE_PASTE_CHUNK_SIZE));
+                      if (i + LARGE_PASTE_CHUNK_SIZE < text.length) await waitForNextFrame();
+                    }
+                    ensureTrailingParagraph(root);
+                    const md = nextContent ?? editableToPlainText(root);
+                    lastRenderedRef.current = md;
+                    largePasteRef.current = md.length > LARGE_CONTENT_LIMIT;
+                    onContentChange(md);
+                  } finally {
+                    bulkPasteRef.current = false;
+                  }
                 })();
                 return;
               }
