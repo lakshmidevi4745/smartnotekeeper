@@ -16,6 +16,11 @@ const turndown = new TurndownService({
 });
 turndown.keep(["table", "thead", "tbody", "tr", "th", "td"]);
 
+const LARGE_PASTE_LIMIT = 50_000;
+const LARGE_CONTENT_LIMIT = 100_000;
+const LARGE_TOC_PARSE_LIMIT = 200_000;
+const LARGE_PASTE_CHUNK_SIZE = 20_000;
+
 function htmlToMarkdown(html: string): string {
   return turndown.turndown(html).replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -29,6 +34,40 @@ function ensureTrailingParagraph(root: HTMLElement) {
     root.appendChild(p);
   }
 }
+
+function editableToPlainText(root: HTMLElement): string {
+  const parts: string[] = [];
+  const blockTags = new Set(["DIV", "P", "LI", "TR", "TABLE", "PRE", "BLOCKQUOTE", "H1", "H2", "H3", "H4", "H5", "H6"]);
+
+  const pushNewline = () => {
+    const last = parts[parts.length - 1];
+    if (last !== "\n") parts.push("\n");
+  };
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parts.push(node.textContent?.replace(/\u00a0/g, " ") ?? "");
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node as HTMLElement;
+    if (el.tagName === "BR") {
+      pushNewline();
+      return;
+    }
+
+    const isBlock = blockTags.has(el.tagName);
+    if (isBlock && parts.length > 0) pushNewline();
+    el.childNodes.forEach(walk);
+    if (isBlock) pushNewline();
+  };
+
+  root.childNodes.forEach(walk);
+  return parts.join("").replace(/\n{3,}/g, "\n\n").trimEnd();
+}
+
+const waitForNextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 import { supabase } from "@/integrations/supabase/client";
 import {
