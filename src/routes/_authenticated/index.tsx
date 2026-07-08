@@ -16,6 +16,11 @@ const turndown = new TurndownService({
 });
 turndown.keep(["table", "thead", "tbody", "tr", "th", "td"]);
 
+const LARGE_PASTE_LIMIT = 50_000;
+const LARGE_CONTENT_LIMIT = 100_000;
+const LARGE_TOC_PARSE_LIMIT = 200_000;
+const LARGE_PASTE_CHUNK_SIZE = 20_000;
+
 function htmlToMarkdown(html: string): string {
   return turndown.turndown(html).replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -29,6 +34,40 @@ function ensureTrailingParagraph(root: HTMLElement) {
     root.appendChild(p);
   }
 }
+
+function editableToPlainText(root: HTMLElement): string {
+  const parts: string[] = [];
+  const blockTags = new Set(["DIV", "P", "LI", "TR", "TABLE", "PRE", "BLOCKQUOTE", "H1", "H2", "H3", "H4", "H5", "H6"]);
+
+  const pushNewline = () => {
+    const last = parts[parts.length - 1];
+    if (last !== "\n") parts.push("\n");
+  };
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parts.push(node.textContent?.replace(/\u00a0/g, " ") ?? "");
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node as HTMLElement;
+    if (el.tagName === "BR") {
+      pushNewline();
+      return;
+    }
+
+    const isBlock = blockTags.has(el.tagName);
+    if (isBlock && parts.length > 0) pushNewline();
+    el.childNodes.forEach(walk);
+    if (isBlock) pushNewline();
+  };
+
+  root.childNodes.forEach(walk);
+  return parts.join("").replace(/\n{3,}/g, "\n\n").trimEnd();
+}
+
+const waitForNextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -666,6 +705,8 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const editableRef = useRef<HTMLDivElement>(null);
   const hiddenRef = useRef<HTMLDivElement>(null);
   const lastRenderedRef = useRef<string | null>(null);
+  const largePasteRef = useRef(false);
+  const bulkPasteRef = useRef(false);
 
   useEffect(() => {
     if (!noteQ.data) return;
@@ -686,7 +727,13 @@ function NoteEditor({ noteId }: { noteId: string }) {
     if (lastRenderedRef.current === externalContent) return;
     requestAnimationFrame(() => {
       if (!hiddenRef.current || !editableRef.current) return;
-      const html = hiddenRef.current.innerHTML || "<p><br/></p>";
+      const html =
+        externalContent.length > LARGE_CONTENT_LIMIT
+          ? `<pre>${externalContent
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")}</pre><p><br/></p>`
+          : hiddenRef.current.innerHTML || "<p><br/></p>";
       editableRef.current.innerHTML = html;
       ensureTrailingParagraph(editableRef.current);
       lastRenderedRef.current = externalContent;
@@ -751,9 +798,13 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const captureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runCapture = useCallback(() => {
     if (!editableRef.current) return;
-    const html = editableRef.current.innerHTML;
-    const md = htmlToMarkdown(html);
+    const textSize = editableRef.current.textContent?.length ?? 0;
+    const md =
+      largePasteRef.current || textSize > LARGE_CONTENT_LIMIT
+        ? editableToPlainText(editableRef.current)
+        : htmlToMarkdown(editableRef.current.innerHTML);
     lastRenderedRef.current = md;
+    largePasteRef.current = md.length > LARGE_CONTENT_LIMIT;
     onContentChange(md);
   }, [onContentChange]);
   const captureFromEditable = useCallback(() => {
@@ -970,7 +1021,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
           {/* Hidden renderer — produces formatted HTML from markdown source */}
           <div ref={hiddenRef} className="hidden" aria-hidden>
-            <MarkdownView source={externalContent} />
+            {externalContent.length <= LARGE_CONTENT_LIMIT && <MarkdownView source={externalContent} />}
           </div>
           <div
             ref={editableRef}
@@ -978,6 +1029,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
             suppressContentEditableWarning
             spellCheck
             onInput={() => {
+              if (bulkPasteRef.current) return;
               if (editableRef.current) ensureTrailingParagraph(editableRef.current);
               captureFromEditable();
             }}
@@ -1037,20 +1089,53 @@ function NoteEditor({ noteId }: { noteId: string }) {
             onPaste={(e) => {
               const html = e.clipboardData.getData("text/html");
               const text = e.clipboardData.getData("text/plain");
-              // For very large clipboards, HTML paste + full markdown
-              // reconversion blocks the UI. Fall back to plain-text insertion.
-              const LARGE = 50_000;
-              if (html && html.length < LARGE) {
+              // For very large clipboards, native HTML/plain paste plus full
+              // markdown reconversion can freeze the tab. Insert plain text in
+              // chunks so the browser gets frames between large DOM updates.
+              if (text && text.length >= LARGE_PASTE_LIMIT) {
+                e.preventDefault();
+                largePasteRef.current = true;
+                bulkPasteRef.current = true;
+                const current = editableToPlainText(editableRef.current!);
+                const selection = window.getSelection();
+                const hasLocalSelection =
+                  !!selection &&
+                  selection.rangeCount > 0 &&
+                  !!editableRef.current?.contains(selection.getRangeAt(0).commonAncestorContainer);
+                const nextContent = hasLocalSelection ? undefined : current ? `${current}\n${text}` : text;
+
+                if (nextContent !== undefined) {
+                  setContent(nextContent);
+                  lastRenderedRef.current = nextContent;
+                }
+
+                void (async () => {
+                  const root = editableRef.current;
+                  if (!root) {
+                    bulkPasteRef.current = false;
+                    return;
+                  }
+                  try {
+                    for (let i = 0; i < text.length; i += LARGE_PASTE_CHUNK_SIZE) {
+                      document.execCommand("insertText", false, text.slice(i, i + LARGE_PASTE_CHUNK_SIZE));
+                      if (i + LARGE_PASTE_CHUNK_SIZE < text.length) await waitForNextFrame();
+                    }
+                    ensureTrailingParagraph(root);
+                    const md = nextContent ?? editableToPlainText(root);
+                    lastRenderedRef.current = md;
+                    largePasteRef.current = md.length > LARGE_CONTENT_LIMIT;
+                    onContentChange(md);
+                  } finally {
+                    bulkPasteRef.current = false;
+                  }
+                })();
+                return;
+              }
+
+              if (html && html.length < LARGE_PASTE_LIMIT) {
                 e.preventDefault();
                 try {
                   document.execCommand("insertHTML", false, html);
-                } catch {
-                  /* ignore */
-                }
-              } else if (text && text.length >= LARGE) {
-                e.preventDefault();
-                try {
-                  document.execCommand("insertText", false, text);
                 } catch {
                   /* ignore */
                 }
@@ -1284,7 +1369,10 @@ function TocPanel({
   content: string;
   editableRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const items = useMemo(() => parseToc(content), [content]);
+  const items = useMemo(
+    () => (content.length > LARGE_TOC_PARSE_LIMIT ? [] : parseToc(content)),
+    [content],
+  );
   const [open, setOpen] = useState(true);
 
   const jumpTo = (item: TocItem) => {
