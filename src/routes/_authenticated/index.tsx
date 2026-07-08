@@ -652,6 +652,10 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  // Separate source that drives the hidden MarkdownView -> editable sync.
+  // Only updated on external changes (initial load, undo/redo, rollback) so
+  // typing/pasting large content does NOT re-run ReactMarkdown on every keystroke.
+  const [externalContent, setExternalContent] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
 
   const undoStack = useRef<string[]>([]);
@@ -668,25 +672,28 @@ function NoteEditor({ noteId }: { noteId: string }) {
     hydratedRef.current = true;
     setTitle(noteQ.data.title);
     setContent(noteQ.data.content);
+    setExternalContent(noteQ.data.content);
     undoStack.current = [noteQ.data.content];
     redoStack.current = [];
     lastPushedRef.current = noteQ.data.content;
     setSaveState("saved");
   }, [noteQ.data]);
 
-  // Sync rendered HTML into the editable div whenever content changes externally
+  // Sync rendered HTML into the editable div whenever externalContent changes
   // (initial load, undo/redo, rollback). Internal typing sets lastRenderedRef
   // first to avoid wiping the user's caret.
   useEffect(() => {
-    if (lastRenderedRef.current === content) return;
+    if (lastRenderedRef.current === externalContent) return;
     requestAnimationFrame(() => {
       if (!hiddenRef.current || !editableRef.current) return;
       const html = hiddenRef.current.innerHTML || "<p><br/></p>";
       editableRef.current.innerHTML = html;
       ensureTrailingParagraph(editableRef.current);
-      lastRenderedRef.current = content;
+      lastRenderedRef.current = externalContent;
     });
-  }, [content]);
+  }, [externalContent]);
+
+
 
 
   const pushHistory = useCallback((value: string) => {
@@ -738,13 +745,22 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   // Capture current HTML from the editable, convert to markdown, and save —
   // without triggering a re-render of the editable (which would lose the caret).
-  const captureFromEditable = useCallback(() => {
+  // Debounced capture: converting a very large innerHTML to markdown is
+  // expensive; coalesce rapid input/paste events so we don't block the UI
+  // on every keystroke.
+  const captureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runCapture = useCallback(() => {
     if (!editableRef.current) return;
     const html = editableRef.current.innerHTML;
     const md = htmlToMarkdown(html);
     lastRenderedRef.current = md;
     onContentChange(md);
   }, [onContentChange]);
+  const captureFromEditable = useCallback(() => {
+    if (captureTimer.current) clearTimeout(captureTimer.current);
+    captureTimer.current = setTimeout(runCapture, 200);
+  }, [runCapture]);
+
 
   const runExec = (cmd: string, val?: string) => {
     editableRef.current?.focus();
@@ -822,6 +838,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
     const prev = undoStack.current[undoStack.current.length - 1];
     lastPushedRef.current = prev;
     setContent(prev);
+    setExternalContent(prev);
     scheduleSave({ content: prev });
   };
 
@@ -831,6 +848,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
     undoStack.current.push(next);
     lastPushedRef.current = next;
     setContent(next);
+    setExternalContent(next);
     scheduleSave({ content: next });
   };
 
@@ -861,6 +879,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
     onSuccess: (res) => {
       const c = res?.content ?? "";
       setContent(c);
+      setExternalContent(c);
       pushHistory(c);
       toast.success("Rolled back to last commit");
       qc.invalidateQueries({ queryKey: ["note", noteId] });
@@ -951,7 +970,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
           {/* Hidden renderer — produces formatted HTML from markdown source */}
           <div ref={hiddenRef} className="hidden" aria-hidden>
-            <MarkdownView source={content} />
+            <MarkdownView source={externalContent} />
           </div>
           <div
             ref={editableRef}
@@ -1017,16 +1036,30 @@ function NoteEditor({ noteId }: { noteId: string }) {
             }}
             onPaste={(e) => {
               const html = e.clipboardData.getData("text/html");
-              if (!html) return; // let browser handle plain text natively
-              e.preventDefault();
-              try {
-                document.execCommand("insertHTML", false, html);
-              } catch {
-                /* ignore */
+              const text = e.clipboardData.getData("text/plain");
+              // For very large clipboards, HTML paste + full markdown
+              // reconversion blocks the UI. Fall back to plain-text insertion.
+              const LARGE = 50_000;
+              if (html && html.length < LARGE) {
+                e.preventDefault();
+                try {
+                  document.execCommand("insertHTML", false, html);
+                } catch {
+                  /* ignore */
+                }
+              } else if (text && text.length >= LARGE) {
+                e.preventDefault();
+                try {
+                  document.execCommand("insertText", false, text);
+                } catch {
+                  /* ignore */
+                }
               }
+              // else: let the browser handle small plain-text paste natively
               if (editableRef.current) ensureTrailingParagraph(editableRef.current);
               captureFromEditable();
             }}
+
             className="prose prose-slate dark:prose-invert mx-auto min-h-full max-w-3xl p-4 outline-none focus:outline-none sm:p-6 prose-headings:font-semibold prose-h1:text-3xl prose-h1:mt-6 prose-h1:mb-4 prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-3 prose-h3:text-xl prose-h3:mt-5 prose-h3:mb-2 prose-p:my-3 prose-p:leading-7 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-blockquote:border-l-4 prose-blockquote:border-primary/40 prose-blockquote:pl-4 prose-blockquote:italic prose-hr:my-6 prose-strong:font-semibold prose-a:text-primary"
           />
         </ScrollArea>
