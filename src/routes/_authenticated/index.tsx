@@ -1087,20 +1087,45 @@ function NoteEditor({ noteId }: { noteId: string }) {
             onPaste={(e) => {
               const html = e.clipboardData.getData("text/html");
               const text = e.clipboardData.getData("text/plain");
-              // For very large clipboards, HTML paste + full markdown
-              // reconversion blocks the UI. Fall back to plain-text insertion.
-              const LARGE = 50_000;
-              if (html && html.length < LARGE) {
+              // For very large clipboards, native HTML/plain paste plus full
+              // markdown reconversion can freeze the tab. Insert plain text in
+              // chunks so the browser gets frames between large DOM updates.
+              if (text && text.length >= LARGE_PASTE_LIMIT) {
+                e.preventDefault();
+                largePasteRef.current = true;
+                const current = editableToPlainText(editableRef.current!);
+                const selection = window.getSelection();
+                const hasLocalSelection =
+                  !!selection &&
+                  selection.rangeCount > 0 &&
+                  !!editableRef.current?.contains(selection.getRangeAt(0).commonAncestorContainer);
+                const nextContent = hasLocalSelection ? undefined : current ? `${current}\n${text}` : text;
+
+                if (nextContent !== undefined) {
+                  setContent(nextContent);
+                  lastRenderedRef.current = nextContent;
+                }
+
+                void (async () => {
+                  const root = editableRef.current;
+                  if (!root) return;
+                  for (let i = 0; i < text.length; i += LARGE_PASTE_CHUNK_SIZE) {
+                    document.execCommand("insertText", false, text.slice(i, i + LARGE_PASTE_CHUNK_SIZE));
+                    if (i + LARGE_PASTE_CHUNK_SIZE < text.length) await waitForNextFrame();
+                  }
+                  ensureTrailingParagraph(root);
+                  const md = nextContent ?? editableToPlainText(root);
+                  lastRenderedRef.current = md;
+                  largePasteRef.current = md.length > LARGE_CONTENT_LIMIT;
+                  onContentChange(md);
+                })();
+                return;
+              }
+
+              if (html && html.length < LARGE_PASTE_LIMIT) {
                 e.preventDefault();
                 try {
                   document.execCommand("insertHTML", false, html);
-                } catch {
-                  /* ignore */
-                }
-              } else if (text && text.length >= LARGE) {
-                e.preventDefault();
-                try {
-                  document.execCommand("insertText", false, text);
                 } catch {
                   /* ignore */
                 }
