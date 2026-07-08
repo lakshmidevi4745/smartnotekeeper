@@ -16,10 +16,9 @@ const turndown = new TurndownService({
 });
 turndown.keep(["table", "thead", "tbody", "tr", "th", "td"]);
 
-const LARGE_PASTE_LIMIT = 50_000;
-const LARGE_CONTENT_LIMIT = 100_000;
-const LARGE_TOC_PARSE_LIMIT = 200_000;
-const LARGE_PASTE_CHUNK_SIZE = 20_000;
+const LARGE_PASTE_LIMIT = 8_000;
+const LARGE_CONTENT_LIMIT = 20_000;
+const LARGE_TOC_PARSE_LIMIT = 50_000;
 
 function htmlToMarkdown(html: string): string {
   return turndown.turndown(html).replace(/\n{3,}/g, "\n\n").trim();
@@ -67,7 +66,24 @@ function editableToPlainText(root: HTMLElement): string {
   return parts.join("").replace(/\n{3,}/g, "\n\n").trimEnd();
 }
 
-const waitForNextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+function getEditableSelectionOffsets(root: HTMLElement, fallbackLength: number) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return { start: fallbackLength, end: fallbackLength };
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!root.contains(range.commonAncestorContainer)) {
+    return { start: fallbackLength, end: fallbackLength };
+  }
+
+  const before = range.cloneRange();
+  before.selectNodeContents(root);
+  before.setEnd(range.startContainer, range.startOffset);
+  const start = Math.min(before.toString().length, fallbackLength);
+  const end = Math.min(start + range.toString().length, fallbackLength);
+  return { start, end };
+}
 
 import { supabase } from "@/integrations/supabase/client";
 import {
