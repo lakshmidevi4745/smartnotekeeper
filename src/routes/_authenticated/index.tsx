@@ -837,6 +837,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   // typing/pasting large content does NOT re-run ReactMarkdown on every keystroke.
   const [externalContent, setExternalContent] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
+  const [plainTextMode, setPlainTextMode] = useState(false);
 
   const undoStack = useRef<string[]>([]);
   const redoStack = useRef<string[]>([]);
@@ -868,6 +869,11 @@ function NoteEditor({ noteId }: { noteId: string }) {
     setTitle(noteQ.data.title);
     setContent(noteQ.data.content);
     setExternalContent(noteQ.data.content);
+    setPlainTextMode(
+      noteQ.data.content.length === 0 ||
+        noteQ.data.content.length >= LARGE_CONTENT_LIMIT ||
+        (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches),
+    );
     undoStack.current = [noteQ.data.content];
     redoStack.current = [];
     lastPushedRef.current = noteQ.data.content;
@@ -956,9 +962,11 @@ function NoteEditor({ noteId }: { noteId: string }) {
   };
 
   const isLargeDocument = content.length >= LARGE_CONTENT_LIMIT;
+  const usePlainTextEditor = plainTextMode || isLargeDocument;
 
   const onPlainTextChange = useCallback(
     (v: string) => {
+      setPlainTextMode(true);
       onContentChange(v);
       if (v.length < LARGE_CONTENT_LIMIT) {
         setExternalContent(v);
@@ -996,7 +1004,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
 
   const runExec = (cmd: string, val?: string) => {
-    if (isLargeDocument) return;
+    if (usePlainTextEditor) return;
     editableRef.current?.focus();
     try {
       document.execCommand(cmd, false, val);
@@ -1007,7 +1015,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   };
 
   const wrapSelectionWithStyle = (style: string) => {
-    if (isLargeDocument) return;
+    if (usePlainTextEditor) return;
     editableRef.current?.focus();
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
@@ -1035,6 +1043,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const insertItalic = () => runExec("italic");
   const setTextColor = (color: string) => runExec("foreColor", color);
   const setBgColor = (color: string) => {
+    if (usePlainTextEditor) return;
     editableRef.current?.focus();
     try {
       if (!document.execCommand("hiliteColor", false, color)) {
@@ -1048,7 +1057,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const setFontSize = (size: string) => wrapSelectionWithStyle(`font-size:${size}`);
 
   const insertTable = (rows: number, cols: number) => {
-    if (isLargeDocument) return;
+    if (usePlainTextEditor) return;
     editableRef.current?.focus();
     let html = '<table><thead><tr>';
     for (let c = 0; c < cols; c++) html += `<th>Header ${c + 1}</th>`;
@@ -1206,35 +1215,14 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
           {/* Hidden renderer — produces formatted HTML from markdown source */}
           <div ref={hiddenRef} className="hidden" aria-hidden>
-            {!isLargeDocument && <MarkdownView source={externalContent} />}
+            {!usePlainTextEditor && <MarkdownView source={externalContent} />}
           </div>
-          {isLargeDocument ? (
+          {usePlainTextEditor ? (
             <textarea
               ref={textareaRef}
               value={content}
               spellCheck={false}
               onChange={(e) => onPlainTextChange(e.target.value)}
-              onPaste={(e) => {
-                const eventText = e.clipboardData.getData("text/plain");
-                const eventHtml = e.clipboardData.getData("text/html");
-                const itemText = readClipboardItemText(e.clipboardData);
-                if (!eventText && !eventHtml && !hasClipboardTextItem(e.clipboardData)) return;
-                e.preventDefault();
-                const target = e.currentTarget;
-                const start = target.selectionStart;
-                const end = target.selectionEnd;
-                const base = target.value;
-                void (async () => {
-                  const text = await resolveClipboardPlainText(eventText, eventHtml, itemText);
-                  if (!text) return;
-                  const next = `${base.slice(0, start)}${text}${base.slice(end)}`;
-                  onPlainTextChange(next);
-                  requestAnimationFrame(() => {
-                    const caret = start + text.length;
-                    target.setSelectionRange(caret, caret);
-                  });
-                })();
-              }}
               className="mx-auto block w-full max-w-5xl resize-none overflow-hidden bg-background p-4 font-mono text-sm leading-6 outline-none sm:p-6"
             />
           ) : (
