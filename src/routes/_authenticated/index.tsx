@@ -141,6 +141,19 @@ async function resolveClipboardPlainText(
     /* Browser may deny async clipboard reads; the paste event data is still used. */
   }
 
+  try {
+    const items = await navigator.clipboard?.read?.();
+    for (const item of items ?? []) {
+      if (!item.types.includes("text/plain")) continue;
+      const blob = await item.getType("text/plain");
+      const blobText = await blob.text();
+      if (blobText.length > best.length) best = blobText;
+      break;
+    }
+  } catch {
+    /* Some browsers expose readText but not read(); keep the best text found. */
+  }
+
   if (eventHtml) {
     const textLines = countLineBreaks(best);
     const htmlLines = estimateHtmlLineBreaks(eventHtml);
