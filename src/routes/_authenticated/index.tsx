@@ -142,7 +142,10 @@ async function resolveClipboardPlainText(
   }
 
   try {
-    const items = await navigator.clipboard?.read?.();
+    const clipboard = navigator.clipboard as Clipboard & {
+      read?: () => Promise<Array<{ types: string[]; getType: (type: string) => Promise<Blob> }>>;
+    };
+    const items = await clipboard.read?.();
     for (const item of items ?? []) {
       if (!item.types.includes("text/plain")) continue;
       const blob = await item.getType("text/plain");
