@@ -827,6 +827,8 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const lastRenderedRef = useRef<string | null>(null);
   const largePasteRef = useRef(false);
   const bulkPasteRef = useRef(false);
+  const localChangeRef = useRef(false);
+  const saveSeqRef = useRef(0);
 
   // Auto-grow textarea (large-document plain-text mode) so the outer scroll
   // container handles overflow instead of clipping the content.
@@ -839,6 +841,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   useEffect(() => {
     if (!noteQ.data) return;
+    if (hydratedRef.current && localChangeRef.current) return;
     hydratedRef.current = true;
     setTitle(noteQ.data.title);
     setContent(noteQ.data.content);
@@ -846,6 +849,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
     undoStack.current = [noteQ.data.content];
     redoStack.current = [];
     lastPushedRef.current = noteQ.data.content;
+    localChangeRef.current = false;
     setSaveState("saved");
   }, [noteQ.data]);
 
@@ -889,14 +893,18 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const scheduleSave = useCallback(
     (next: { title?: string; content?: string }) => {
       setSaveState("saving");
+      const seq = ++saveSeqRef.current;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
         try {
           await updateNote({ data: { id: noteId, ...next } });
-          setSaveState("saved");
-          qc.invalidateQueries({ queryKey: ["notes"] });
+          if (seq === saveSeqRef.current) {
+            localChangeRef.current = false;
+            setSaveState("saved");
+            qc.invalidateQueries({ queryKey: ["notes"] });
+          }
         } catch (e) {
-          setSaveState("dirty");
+          if (seq === saveSeqRef.current) setSaveState("dirty");
           toast.error(e instanceof Error ? e.message : "Save failed");
         }
       }, 700);
@@ -906,6 +914,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const onContentChange = useCallback(
     (v: string) => {
+      localChangeRef.current = true;
       setContent(v);
       setSaveState("dirty");
       const last = lastPushedRef.current;
@@ -918,6 +927,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   );
 
   const onTitleChange = (v: string) => {
+    localChangeRef.current = true;
     setTitle(v);
     setSaveState("dirty");
     scheduleSave({ title: v });
