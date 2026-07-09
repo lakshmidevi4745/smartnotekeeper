@@ -761,9 +761,19 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const editableRef = useRef<HTMLDivElement>(null);
   const hiddenRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastRenderedRef = useRef<string | null>(null);
   const largePasteRef = useRef(false);
   const bulkPasteRef = useRef(false);
+
+  // Auto-grow textarea (large-document plain-text mode) so the outer scroll
+  // container handles overflow instead of clipping the content.
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.max(ta.scrollHeight, 400)}px`;
+  }, [content]);
 
   useEffect(() => {
     if (!noteQ.data) return;
@@ -1106,6 +1116,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
           </div>
           {isLargeDocument ? (
             <textarea
+              ref={textareaRef}
               value={content}
               spellCheck={false}
               onChange={(e) => onPlainTextChange(e.target.value)}
@@ -1123,7 +1134,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   target.setSelectionRange(caret, caret);
                 });
               }}
-              className="mx-auto block min-h-full w-full max-w-5xl resize-none bg-background p-4 font-mono text-sm leading-6 outline-none sm:p-6"
+              className="mx-auto block w-full max-w-5xl resize-none overflow-hidden bg-background p-4 font-mono text-sm leading-6 outline-none sm:p-6"
             />
           ) : (
             <div
