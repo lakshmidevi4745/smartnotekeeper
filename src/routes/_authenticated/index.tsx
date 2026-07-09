@@ -761,9 +761,19 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const editableRef = useRef<HTMLDivElement>(null);
   const hiddenRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastRenderedRef = useRef<string | null>(null);
   const largePasteRef = useRef(false);
   const bulkPasteRef = useRef(false);
+
+  // Auto-grow textarea (large-document plain-text mode) so the outer scroll
+  // container handles overflow instead of clipping the content.
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.max(ta.scrollHeight, 400)}px`;
+  }, [content]);
 
   useEffect(() => {
     if (!noteQ.data) return;
