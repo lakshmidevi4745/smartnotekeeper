@@ -16,7 +16,7 @@ const turndown = new TurndownService({
 });
 turndown.keep(["table", "thead", "tbody", "tr", "th", "td"]);
 
-const LARGE_PASTE_LIMIT = 8_000;
+const RICH_TEXT_PASTE_LIMIT = 8_000;
 const LARGE_CONTENT_LIMIT = 20_000;
 const LARGE_TOC_PARSE_LIMIT = 50_000;
 
@@ -83,6 +83,49 @@ function getEditableSelectionOffsets(root: HTMLElement, fallbackLength: number) 
   const start = Math.min(before.toString().length, fallbackLength);
   const end = Math.min(start + range.toString().length, fallbackLength);
   return { start, end };
+}
+
+function countLineBreaks(value: string) {
+  let count = 0;
+  for (let i = 0; i < value.length; i++) {
+    if (value.charCodeAt(i) === 10) count++;
+  }
+  return count;
+}
+
+function estimateHtmlLineBreaks(html: string) {
+  let count = 0;
+  const re = /<br\b|<\/div>|<\/p>|<\/li>|<\/tr>/gi;
+  while (re.exec(html)) count++;
+  return count;
+}
+
+function clipboardHtmlToPlainText(html: string) {
+  const root = document.createElement("div");
+  root.innerHTML = html;
+  return editableToPlainText(root);
+}
+
+async function resolveClipboardPlainText(eventText: string, eventHtml: string) {
+  let best = eventText;
+
+  try {
+    const direct = await navigator.clipboard?.readText?.();
+    if (direct && direct.length > best.length) best = direct;
+  } catch {
+    /* Browser may deny async clipboard reads; the paste event data is still used. */
+  }
+
+  if (eventHtml) {
+    const textLines = countLineBreaks(best);
+    const htmlLines = estimateHtmlLineBreaks(eventHtml);
+    if (!best || htmlLines > textLines + 20) {
+      const htmlText = clipboardHtmlToPlainText(eventHtml);
+      if (htmlText.length > best.length) best = htmlText;
+    }
+  }
+
+  return best;
 }
 
 import { supabase } from "@/integrations/supabase/client";
