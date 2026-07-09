@@ -182,8 +182,49 @@ function AppPage() {
   const [search, setSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const notebooksQ = useQuery({ queryKey: ["notebooks"], queryFn: () => listNotebooks() });
-  const notesQ = useQuery({ queryKey: ["notes"], queryFn: () => listAllNotes() });
+  const notebooksQ = useQuery({
+    queryKey: ["notebooks"],
+    queryFn: () => listNotebooks(),
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
+  const notesQ = useQuery({
+    queryKey: ["notes"],
+    queryFn: () => listAllNotes(),
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
+
+  // Cross-device sync: refetch when any notebook/note row changes on the server.
+  useEffect(() => {
+    const channel = supabase
+      .channel("notes-sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "notebooks" }, () => {
+        qc.invalidateQueries({ queryKey: ["notebooks"] });
+        qc.invalidateQueries({ queryKey: ["deletedNotebooks"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, (payload) => {
+        qc.invalidateQueries({ queryKey: ["notes"] });
+        qc.invalidateQueries({ queryKey: ["deletedNotes"] });
+        const row = (payload.new ?? payload.old) as { id?: string } | null;
+        if (row?.id) qc.invalidateQueries({ queryKey: ["note", row.id] });
+      })
+      .subscribe();
+    // Also refetch when the tab becomes visible (covers realtime gaps).
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        qc.invalidateQueries({ queryKey: ["notebooks"] });
+        qc.invalidateQueries({ queryKey: ["notes"] });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      supabase.removeChannel(channel);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [qc]);
 
   const notebooks = (notebooksQ.data ?? []) as Notebook[];
   const allNotes = (notesQ.data ?? []) as NoteRef[];
