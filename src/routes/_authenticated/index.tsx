@@ -1116,6 +1116,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
           </div>
           {isLargeDocument ? (
             <textarea
+              ref={textareaRef}
               value={content}
               spellCheck={false}
               onChange={(e) => onPlainTextChange(e.target.value)}
@@ -1133,7 +1134,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   target.setSelectionRange(caret, caret);
                 });
               }}
-              className="mx-auto block min-h-full w-full max-w-5xl resize-none bg-background p-4 font-mono text-sm leading-6 outline-none sm:p-6"
+              className="mx-auto block w-full max-w-5xl resize-none overflow-hidden bg-background p-4 font-mono text-sm leading-6 outline-none sm:p-6"
             />
           ) : (
             <div
