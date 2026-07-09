@@ -1288,16 +1288,17 @@ function NoteEditor({ noteId }: { noteId: string }) {
               onPaste={(e) => {
                 const html = e.clipboardData.getData("text/html");
                 const text = e.clipboardData.getData("text/plain");
-                const itemText = readClipboardItemText(e.clipboardData);
+                const hasTextItem = hasClipboardTextItem(e.clipboardData);
                 // Large pastes bypass the DOM entirely. Rendering hundreds of
                 // thousands of characters into contentEditable is what freezes
                 // the page, so switch to the plain-text editor immediately.
                 if (
-                  (text.length >= RICH_TEXT_PASTE_LIMIT || html.length >= RICH_TEXT_PASTE_LIMIT || hasClipboardTextItem(e.clipboardData)) &&
+                  (text.length >= RICH_TEXT_PASTE_LIMIT || html.length >= RICH_TEXT_PASTE_LIMIT || (!text && !html && hasTextItem)) &&
                   editableRef.current
                 ) {
                   e.preventDefault();
                   const root = editableRef.current;
+                  const itemText = readClipboardItemText(e.clipboardData);
                   const current = editableToPlainText(root);
                   const { start, end } = getEditableSelectionOffsets(root, current.length);
                   void (async () => {
