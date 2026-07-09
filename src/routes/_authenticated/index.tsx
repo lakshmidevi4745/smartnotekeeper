@@ -106,8 +106,27 @@ function clipboardHtmlToPlainText(html: string) {
   return editableToPlainText(root);
 }
 
-async function resolveClipboardPlainText(eventText: string, eventHtml: string) {
+function readClipboardItemText(data: DataTransfer) {
+  const item = Array.from(data.items).find(
+    (entry) => entry.kind === "string" && entry.type === "text/plain",
+  );
+  if (!item) return Promise.resolve("");
+  return new Promise<string>((resolve) => item.getAsString((value) => resolve(value ?? "")));
+}
+
+async function resolveClipboardPlainText(
+  eventText: string,
+  eventHtml: string,
+  itemTextPromise?: Promise<string>,
+) {
   let best = eventText;
+
+  try {
+    const itemText = await itemTextPromise;
+    if (itemText && itemText.length > best.length) best = itemText;
+  } catch {
+    /* Ignore unavailable clipboard item data. */
+  }
 
   try {
     const direct = await navigator.clipboard?.readText?.();
@@ -1166,6 +1185,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
               onPaste={(e) => {
                 const eventText = e.clipboardData.getData("text/plain");
                 const eventHtml = e.clipboardData.getData("text/html");
+                const itemText = readClipboardItemText(e.clipboardData);
                 if (!eventText && !eventHtml) return;
                 e.preventDefault();
                 const target = e.currentTarget;
@@ -1173,7 +1193,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
                 const end = target.selectionEnd;
                 const base = target.value;
                 void (async () => {
-                  const text = await resolveClipboardPlainText(eventText, eventHtml);
+                  const text = await resolveClipboardPlainText(eventText, eventHtml, itemText);
                   if (!text) return;
                   const next = `${base.slice(0, start)}${text}${base.slice(end)}`;
                   onPlainTextChange(next);
@@ -1252,6 +1272,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
               onPaste={(e) => {
                 const html = e.clipboardData.getData("text/html");
                 const text = e.clipboardData.getData("text/plain");
+                const itemText = readClipboardItemText(e.clipboardData);
                 // Large pastes bypass the DOM entirely. Rendering hundreds of
                 // thousands of characters into contentEditable is what freezes
                 // the page, so switch to the plain-text editor immediately.
@@ -1261,7 +1282,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   const current = editableToPlainText(root);
                   const { start, end } = getEditableSelectionOffsets(root, current.length);
                   void (async () => {
-                    const fullText = await resolveClipboardPlainText(text, html);
+                    const fullText = await resolveClipboardPlainText(text, html, itemText);
                     if (!fullText) return;
                     const next = `${current.slice(0, start)}${fullText}${current.slice(end)}`;
                     onPlainTextChange(next);
