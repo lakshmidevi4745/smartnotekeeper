@@ -114,6 +114,12 @@ function readClipboardItemText(data: DataTransfer) {
   return new Promise<string>((resolve) => item.getAsString((value) => resolve(value ?? "")));
 }
 
+function hasClipboardTextItem(data: DataTransfer) {
+  return Array.from(data.items).some(
+    (entry) => entry.kind === "string" && entry.type === "text/plain",
+  );
+}
+
 async function resolveClipboardPlainText(
   eventText: string,
   eventHtml: string,
@@ -1196,7 +1202,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
                 const eventText = e.clipboardData.getData("text/plain");
                 const eventHtml = e.clipboardData.getData("text/html");
                 const itemText = readClipboardItemText(e.clipboardData);
-                if (!eventText && !eventHtml) return;
+                if (!eventText && !eventHtml && !hasClipboardTextItem(e.clipboardData)) return;
                 e.preventDefault();
                 const target = e.currentTarget;
                 const start = target.selectionStart;
@@ -1286,7 +1292,10 @@ function NoteEditor({ noteId }: { noteId: string }) {
                 // Large pastes bypass the DOM entirely. Rendering hundreds of
                 // thousands of characters into contentEditable is what freezes
                 // the page, so switch to the plain-text editor immediately.
-                if ((text.length >= RICH_TEXT_PASTE_LIMIT || html.length >= RICH_TEXT_PASTE_LIMIT) && editableRef.current) {
+                if (
+                  (text.length >= RICH_TEXT_PASTE_LIMIT || html.length >= RICH_TEXT_PASTE_LIMIT || hasClipboardTextItem(e.clipboardData)) &&
+                  editableRef.current
+                ) {
                   e.preventDefault();
                   const root = editableRef.current;
                   const current = editableToPlainText(root);
