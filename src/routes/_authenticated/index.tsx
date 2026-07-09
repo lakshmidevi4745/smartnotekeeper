@@ -16,7 +16,7 @@ const turndown = new TurndownService({
 });
 turndown.keep(["table", "thead", "tbody", "tr", "th", "td"]);
 
-const LARGE_PASTE_LIMIT = 8_000;
+const RICH_TEXT_PASTE_LIMIT = 8_000;
 const LARGE_CONTENT_LIMIT = 20_000;
 const LARGE_TOC_PARSE_LIMIT = 50_000;
 
@@ -83,6 +83,90 @@ function getEditableSelectionOffsets(root: HTMLElement, fallbackLength: number) 
   const start = Math.min(before.toString().length, fallbackLength);
   const end = Math.min(start + range.toString().length, fallbackLength);
   return { start, end };
+}
+
+function countLineBreaks(value: string) {
+  let count = 0;
+  for (let i = 0; i < value.length; i++) {
+    if (value.charCodeAt(i) === 10) count++;
+  }
+  return count;
+}
+
+function estimateHtmlLineBreaks(html: string) {
+  let count = 0;
+  const re = /<br\b|<\/div>|<\/p>|<\/li>|<\/tr>/gi;
+  while (re.exec(html)) count++;
+  return count;
+}
+
+function clipboardHtmlToPlainText(html: string) {
+  const root = document.createElement("div");
+  root.innerHTML = html;
+  return editableToPlainText(root);
+}
+
+function readClipboardItemText(data: DataTransfer) {
+  const item = Array.from(data.items).find(
+    (entry) => entry.kind === "string" && entry.type === "text/plain",
+  );
+  if (!item) return Promise.resolve("");
+  return new Promise<string>((resolve) => item.getAsString((value) => resolve(value ?? "")));
+}
+
+function hasClipboardTextItem(data: DataTransfer) {
+  return Array.from(data.items).some(
+    (entry) => entry.kind === "string" && entry.type === "text/plain",
+  );
+}
+
+async function resolveClipboardPlainText(
+  eventText: string,
+  eventHtml: string,
+  itemTextPromise?: Promise<string>,
+) {
+  let best = eventText;
+
+  try {
+    const itemText = await itemTextPromise;
+    if (itemText && itemText.length > best.length) best = itemText;
+  } catch {
+    /* Ignore unavailable clipboard item data. */
+  }
+
+  try {
+    const direct = await navigator.clipboard?.readText?.();
+    if (direct && direct.length > best.length) best = direct;
+  } catch {
+    /* Browser may deny async clipboard reads; the paste event data is still used. */
+  }
+
+  try {
+    const clipboard = navigator.clipboard as Clipboard & {
+      read?: () => Promise<Array<{ types: string[]; getType: (type: string) => Promise<Blob> }>>;
+    };
+    const items = await clipboard.read?.();
+    for (const item of items ?? []) {
+      if (!item.types.includes("text/plain")) continue;
+      const blob = await item.getType("text/plain");
+      const blobText = await blob.text();
+      if (blobText.length > best.length) best = blobText;
+      break;
+    }
+  } catch {
+    /* Some browsers expose readText but not read(); keep the best text found. */
+  }
+
+  if (eventHtml) {
+    const textLines = countLineBreaks(best);
+    const htmlLines = estimateHtmlLineBreaks(eventHtml);
+    if (!best || htmlLines > textLines + 20) {
+      const htmlText = clipboardHtmlToPlainText(eventHtml);
+      if (htmlText.length > best.length) best = htmlText;
+    }
+  }
+
+  return best;
 }
 
 import { supabase } from "@/integrations/supabase/client";
@@ -753,6 +837,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   // typing/pasting large content does NOT re-run ReactMarkdown on every keystroke.
   const [externalContent, setExternalContent] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
+  const [plainTextMode, setPlainTextMode] = useState(false);
 
   const undoStack = useRef<string[]>([]);
   const redoStack = useRef<string[]>([]);
@@ -765,6 +850,8 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const lastRenderedRef = useRef<string | null>(null);
   const largePasteRef = useRef(false);
   const bulkPasteRef = useRef(false);
+  const localChangeRef = useRef(false);
+  const saveSeqRef = useRef(0);
 
   // Auto-grow textarea (large-document plain-text mode) so the outer scroll
   // container handles overflow instead of clipping the content.
@@ -777,13 +864,20 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   useEffect(() => {
     if (!noteQ.data) return;
+    if (hydratedRef.current && localChangeRef.current) return;
     hydratedRef.current = true;
     setTitle(noteQ.data.title);
     setContent(noteQ.data.content);
     setExternalContent(noteQ.data.content);
+    setPlainTextMode(
+      noteQ.data.content.length === 0 ||
+        noteQ.data.content.length >= LARGE_CONTENT_LIMIT ||
+        (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches),
+    );
     undoStack.current = [noteQ.data.content];
     redoStack.current = [];
     lastPushedRef.current = noteQ.data.content;
+    localChangeRef.current = false;
     setSaveState("saved");
   }, [noteQ.data]);
 
@@ -827,14 +921,18 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const scheduleSave = useCallback(
     (next: { title?: string; content?: string }) => {
       setSaveState("saving");
+      const seq = ++saveSeqRef.current;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
         try {
           await updateNote({ data: { id: noteId, ...next } });
-          setSaveState("saved");
-          qc.invalidateQueries({ queryKey: ["notes"] });
+          if (seq === saveSeqRef.current) {
+            localChangeRef.current = false;
+            setSaveState("saved");
+            qc.invalidateQueries({ queryKey: ["notes"] });
+          }
         } catch (e) {
-          setSaveState("dirty");
+          if (seq === saveSeqRef.current) setSaveState("dirty");
           toast.error(e instanceof Error ? e.message : "Save failed");
         }
       }, 700);
@@ -844,6 +942,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const onContentChange = useCallback(
     (v: string) => {
+      localChangeRef.current = true;
       setContent(v);
       setSaveState("dirty");
       const last = lastPushedRef.current;
@@ -856,15 +955,18 @@ function NoteEditor({ noteId }: { noteId: string }) {
   );
 
   const onTitleChange = (v: string) => {
+    localChangeRef.current = true;
     setTitle(v);
     setSaveState("dirty");
     scheduleSave({ title: v });
   };
 
   const isLargeDocument = content.length >= LARGE_CONTENT_LIMIT;
+  const usePlainTextEditor = plainTextMode || isLargeDocument;
 
   const onPlainTextChange = useCallback(
     (v: string) => {
+      setPlainTextMode(true);
       onContentChange(v);
       if (v.length < LARGE_CONTENT_LIMIT) {
         setExternalContent(v);
@@ -902,7 +1004,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
 
   const runExec = (cmd: string, val?: string) => {
-    if (isLargeDocument) return;
+    if (usePlainTextEditor) return;
     editableRef.current?.focus();
     try {
       document.execCommand(cmd, false, val);
@@ -913,7 +1015,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   };
 
   const wrapSelectionWithStyle = (style: string) => {
-    if (isLargeDocument) return;
+    if (usePlainTextEditor) return;
     editableRef.current?.focus();
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
@@ -941,6 +1043,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const insertItalic = () => runExec("italic");
   const setTextColor = (color: string) => runExec("foreColor", color);
   const setBgColor = (color: string) => {
+    if (usePlainTextEditor) return;
     editableRef.current?.focus();
     try {
       if (!document.execCommand("hiliteColor", false, color)) {
@@ -954,7 +1057,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const setFontSize = (size: string) => wrapSelectionWithStyle(`font-size:${size}`);
 
   const insertTable = (rows: number, cols: number) => {
-    if (isLargeDocument) return;
+    if (usePlainTextEditor) return;
     editableRef.current?.focus();
     let html = '<table><thead><tr>';
     for (let c = 0; c < cols; c++) html += `<th>Header ${c + 1}</th>`;
@@ -1112,28 +1215,14 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
           {/* Hidden renderer — produces formatted HTML from markdown source */}
           <div ref={hiddenRef} className="hidden" aria-hidden>
-            {!isLargeDocument && <MarkdownView source={externalContent} />}
+            {!usePlainTextEditor && <MarkdownView source={externalContent} />}
           </div>
-          {isLargeDocument ? (
+          {usePlainTextEditor ? (
             <textarea
               ref={textareaRef}
               value={content}
               spellCheck={false}
               onChange={(e) => onPlainTextChange(e.target.value)}
-              onPaste={(e) => {
-                const text = e.clipboardData.getData("text/plain");
-                if (!text || text.length < LARGE_PASTE_LIMIT) return;
-                e.preventDefault();
-                const target = e.currentTarget;
-                const start = target.selectionStart;
-                const end = target.selectionEnd;
-                const next = `${content.slice(0, start)}${text}${content.slice(end)}`;
-                onPlainTextChange(next);
-                requestAnimationFrame(() => {
-                  const caret = start + text.length;
-                  target.setSelectionRange(caret, caret);
-                });
-              }}
               className="mx-auto block w-full max-w-5xl resize-none overflow-hidden bg-background p-4 font-mono text-sm leading-6 outline-none sm:p-6"
             />
           ) : (
@@ -1203,19 +1292,29 @@ function NoteEditor({ noteId }: { noteId: string }) {
               onPaste={(e) => {
                 const html = e.clipboardData.getData("text/html");
                 const text = e.clipboardData.getData("text/plain");
+                const hasTextItem = hasClipboardTextItem(e.clipboardData);
                 // Large pastes bypass the DOM entirely. Rendering hundreds of
                 // thousands of characters into contentEditable is what freezes
                 // the page, so switch to the plain-text editor immediately.
-                if (text && text.length >= LARGE_PASTE_LIMIT && editableRef.current) {
+                if (
+                  (text.length >= RICH_TEXT_PASTE_LIMIT || html.length >= RICH_TEXT_PASTE_LIMIT || (!text && !html && hasTextItem)) &&
+                  editableRef.current
+                ) {
                   e.preventDefault();
-                  const current = editableToPlainText(editableRef.current);
-                  const { start, end } = getEditableSelectionOffsets(editableRef.current, current.length);
-                  const next = `${current.slice(0, start)}${text}${current.slice(end)}`;
-                  onPlainTextChange(next);
+                  const root = editableRef.current;
+                  const itemText = readClipboardItemText(e.clipboardData);
+                  const current = editableToPlainText(root);
+                  const { start, end } = getEditableSelectionOffsets(root, current.length);
+                  void (async () => {
+                    const fullText = await resolveClipboardPlainText(text, html, itemText);
+                    if (!fullText) return;
+                    const next = `${current.slice(0, start)}${fullText}${current.slice(end)}`;
+                    onPlainTextChange(next);
+                  })();
                   return;
                 }
 
-                if (html && html.length < LARGE_PASTE_LIMIT) {
+                if (html && html.length < RICH_TEXT_PASTE_LIMIT) {
                   e.preventDefault();
                   try {
                     document.execCommand("insertHTML", false, html);
