@@ -1164,18 +1164,24 @@ function NoteEditor({ noteId }: { noteId: string }) {
               spellCheck={false}
               onChange={(e) => onPlainTextChange(e.target.value)}
               onPaste={(e) => {
-                const text = e.clipboardData.getData("text/plain");
-                if (!text || text.length < LARGE_PASTE_LIMIT) return;
+                const eventText = e.clipboardData.getData("text/plain");
+                const eventHtml = e.clipboardData.getData("text/html");
+                if (!eventText && !eventHtml) return;
                 e.preventDefault();
                 const target = e.currentTarget;
                 const start = target.selectionStart;
                 const end = target.selectionEnd;
-                const next = `${content.slice(0, start)}${text}${content.slice(end)}`;
-                onPlainTextChange(next);
-                requestAnimationFrame(() => {
-                  const caret = start + text.length;
-                  target.setSelectionRange(caret, caret);
-                });
+                const base = target.value;
+                void (async () => {
+                  const text = await resolveClipboardPlainText(eventText, eventHtml);
+                  if (!text) return;
+                  const next = `${base.slice(0, start)}${text}${base.slice(end)}`;
+                  onPlainTextChange(next);
+                  requestAnimationFrame(() => {
+                    const caret = start + text.length;
+                    target.setSelectionRange(caret, caret);
+                  });
+                })();
               }}
               className="mx-auto block w-full max-w-5xl resize-none overflow-hidden bg-background p-4 font-mono text-sm leading-6 outline-none sm:p-6"
             />
@@ -1249,16 +1255,21 @@ function NoteEditor({ noteId }: { noteId: string }) {
                 // Large pastes bypass the DOM entirely. Rendering hundreds of
                 // thousands of characters into contentEditable is what freezes
                 // the page, so switch to the plain-text editor immediately.
-                if (text && text.length >= LARGE_PASTE_LIMIT && editableRef.current) {
+                if ((text.length >= RICH_TEXT_PASTE_LIMIT || html.length >= RICH_TEXT_PASTE_LIMIT) && editableRef.current) {
                   e.preventDefault();
-                  const current = editableToPlainText(editableRef.current);
-                  const { start, end } = getEditableSelectionOffsets(editableRef.current, current.length);
-                  const next = `${current.slice(0, start)}${text}${current.slice(end)}`;
-                  onPlainTextChange(next);
+                  const root = editableRef.current;
+                  const current = editableToPlainText(root);
+                  const { start, end } = getEditableSelectionOffsets(root, current.length);
+                  void (async () => {
+                    const fullText = await resolveClipboardPlainText(text, html);
+                    if (!fullText) return;
+                    const next = `${current.slice(0, start)}${fullText}${current.slice(end)}`;
+                    onPlainTextChange(next);
+                  })();
                   return;
                 }
 
-                if (html && html.length < LARGE_PASTE_LIMIT) {
+                if (html && html.length < RICH_TEXT_PASTE_LIMIT) {
                   e.preventDefault();
                   try {
                     document.execCommand("insertHTML", false, html);
