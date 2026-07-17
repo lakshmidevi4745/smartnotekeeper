@@ -990,6 +990,40 @@ function NoteEditor({ noteId }: { noteId: string }) {
     [onContentChange],
   );
 
+  const handleFilesSelected = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      e.target.value = "";
+      if (files.length === 0) return;
+      try {
+        const parts: string[] = [];
+        for (const file of files) {
+          const text = await file.text();
+          const ext = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+          const codeExts = new Set([
+            "js","jsx","ts","tsx","mjs","cjs","py","rb","go","rs","java","kt","swift",
+            "c","h","cpp","hpp","cc","cs","php","sh","bash","zsh","ps1","sql","html",
+            "htm","css","scss","sass","less","vue","svelte","astro","graphql","proto",
+            "json","xml","yml","yaml","toml","ini","dockerfile","csv","tsv",
+          ]);
+          const isCode = codeExts.has(ext);
+          const fenceLang = isCode ? (ext === "tsx" || ext === "jsx" ? ext : ext) : "";
+          const block = isCode
+            ? `\n\n\`\`\`${fenceLang}\n${text}\n\`\`\`\n`
+            : `\n\n${text}\n`;
+          parts.push(`\n\n<!-- ${file.name} -->${block}`);
+        }
+        const appended = parts.join("");
+        const next = (content ? content : "") + appended;
+        onPlainTextChange(next);
+        toast.success(`Inserted ${files.length} file${files.length > 1 ? "s" : ""}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to read file");
+      }
+    },
+    [content, onPlainTextChange],
+  );
+
   // Capture current HTML from the editable, convert to markdown, and save —
   // without triggering a re-render of the editable (which would lose the caret).
   // Debounced capture: converting a very large innerHTML to markdown is
