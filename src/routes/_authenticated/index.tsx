@@ -227,6 +227,7 @@ import {
   Highlighter,
   Trash,
   RotateCcw,
+  Upload,
 } from "lucide-react";
 import {
   Dialog,
@@ -847,6 +848,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const editableRef = useRef<HTMLDivElement>(null);
   const hiddenRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastRenderedRef = useRef<string | null>(null);
   const largePasteRef = useRef(false);
   const bulkPasteRef = useRef(false);
@@ -986,6 +988,40 @@ function NoteEditor({ noteId }: { noteId: string }) {
       }
     },
     [onContentChange],
+  );
+
+  const handleFilesSelected = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      e.target.value = "";
+      if (files.length === 0) return;
+      try {
+        const parts: string[] = [];
+        for (const file of files) {
+          const text = await file.text();
+          const ext = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+          const codeExts = new Set([
+            "js","jsx","ts","tsx","mjs","cjs","py","rb","go","rs","java","kt","swift",
+            "c","h","cpp","hpp","cc","cs","php","sh","bash","zsh","ps1","sql","html",
+            "htm","css","scss","sass","less","vue","svelte","astro","graphql","proto",
+            "json","xml","yml","yaml","toml","ini","dockerfile","csv","tsv",
+          ]);
+          const isCode = codeExts.has(ext);
+          const fenceLang = isCode ? (ext === "tsx" || ext === "jsx" ? ext : ext) : "";
+          const block = isCode
+            ? `\n\n\`\`\`${fenceLang}\n${text}\n\`\`\`\n`
+            : `\n\n${text}\n`;
+          parts.push(`\n\n<!-- ${file.name} -->${block}`);
+        }
+        const appended = parts.join("");
+        const next = (content ? content : "") + appended;
+        onPlainTextChange(next);
+        toast.success(`Inserted ${files.length} file${files.length > 1 ? "s" : ""}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to read file");
+      }
+    },
+    [content, onPlainTextChange],
   );
 
   // Capture current HTML from the editable, convert to markdown, and save —
@@ -1215,8 +1251,22 @@ function NoteEditor({ noteId }: { noteId: string }) {
             onPick={setBgColor}
           />
           <TableInsert onInsert={insertTable} />
+          <div className="mx-1 h-5 w-px bg-border" />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".txt,.md,.markdown,.log,.csv,.tsv,.json,.xml,.yml,.yaml,.toml,.ini,.env,.js,.jsx,.ts,.tsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cc,.cs,.php,.sh,.bash,.zsh,.ps1,.sql,.html,.htm,.css,.scss,.sass,.less,.vue,.svelte,.astro,.graphql,.proto,.dockerfile,text/*,application/json,application/xml,application/x-yaml,application/sql"
+            className="hidden"
+            onChange={handleFilesSelected}
+          />
+          <ToolbarBtn label="Upload text / code files" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="h-4 w-4" />
+            <span className="ml-1 hidden text-xs sm:inline">Upload</span>
+          </ToolbarBtn>
         </div>
       </TooltipProvider>
+
 
       <div className="flex flex-1 overflow-hidden">
         <ScrollArea className="h-full flex-1">
