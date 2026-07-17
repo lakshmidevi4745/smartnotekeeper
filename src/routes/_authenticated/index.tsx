@@ -1218,13 +1218,50 @@ function NoteEditor({ noteId }: { noteId: string }) {
             {!usePlainTextEditor && <MarkdownView source={externalContent} />}
           </div>
           {usePlainTextEditor ? (
-            <textarea
-              ref={textareaRef}
-              value={content}
-              spellCheck={false}
-              onChange={(e) => onPlainTextChange(e.target.value)}
-              className="mx-auto block w-full max-w-5xl resize-none overflow-hidden bg-background p-4 font-mono text-sm leading-6 outline-none sm:p-6"
-            />
+            <div className="mx-auto flex w-full max-w-5xl items-stretch bg-background">
+              <pre
+                aria-hidden
+                className="select-none py-4 pl-3 pr-2 text-right font-mono text-sm leading-6 text-muted-foreground/70 tabular-nums sm:py-6"
+                style={{ margin: 0 }}
+              >
+                {useMemo(
+                  () =>
+                    Array.from(
+                      { length: Math.max(1, countLineBreaks(content) + 1) },
+                      (_, i) => i + 1,
+                    ).join("\n"),
+                  [content],
+                )}
+              </pre>
+              <textarea
+                ref={textareaRef}
+                value={content}
+                spellCheck={false}
+                onChange={(e) => onPlainTextChange(e.target.value)}
+                onPaste={(e) => {
+                  const text = e.clipboardData.getData("text/plain");
+                  const html = e.clipboardData.getData("text/html");
+                  const itemText = readClipboardItemText(e.clipboardData);
+                  const ta = e.currentTarget;
+                  const start = ta.selectionStart;
+                  const end = ta.selectionEnd;
+                  e.preventDefault();
+                  void (async () => {
+                    const full = await resolveClipboardPlainText(text, html, itemText);
+                    if (!full) return;
+                    const next = content.slice(0, start) + full + content.slice(end);
+                    onPlainTextChange(next);
+                    requestAnimationFrame(() => {
+                      const el = textareaRef.current;
+                      if (!el) return;
+                      const pos = start + full.length;
+                      el.selectionStart = el.selectionEnd = pos;
+                    });
+                  })();
+                }}
+                className="block flex-1 resize-none overflow-hidden bg-background py-4 pl-3 pr-4 font-mono text-sm leading-6 outline-none sm:py-6 sm:pr-6"
+              />
+            </div>
           ) : (
             <div
               ref={editableRef}
