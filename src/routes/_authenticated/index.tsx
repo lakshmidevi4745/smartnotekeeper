@@ -848,6 +848,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   const editableRef = useRef<HTMLDivElement>(null);
   const hiddenRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastRenderedRef = useRef<string | null>(null);
   const largePasteRef = useRef(false);
   const bulkPasteRef = useRef(false);
