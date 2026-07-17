@@ -1216,8 +1216,22 @@ function NoteEditor({ noteId }: { noteId: string }) {
             onPick={setBgColor}
           />
           <TableInsert onInsert={insertTable} />
+          <div className="mx-1 h-5 w-px bg-border" />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".txt,.md,.markdown,.log,.csv,.tsv,.json,.xml,.yml,.yaml,.toml,.ini,.env,.js,.jsx,.ts,.tsx,.mjs,.cjs,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cc,.cs,.php,.sh,.bash,.zsh,.ps1,.sql,.html,.htm,.css,.scss,.sass,.less,.vue,.svelte,.astro,.graphql,.proto,.dockerfile,text/*,application/json,application/xml,application/x-yaml,application/sql"
+            className="hidden"
+            onChange={handleFilesSelected}
+          />
+          <ToolbarBtn label="Upload text / code files" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="h-4 w-4" />
+            <span className="ml-1 hidden text-xs sm:inline">Upload</span>
+          </ToolbarBtn>
         </div>
       </TooltipProvider>
+
 
       <div className="flex flex-1 overflow-hidden">
         <ScrollArea className="h-full flex-1">
