@@ -963,6 +963,14 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const isLargeDocument = content.length >= LARGE_CONTENT_LIMIT;
   const usePlainTextEditor = plainTextMode || isLargeDocument;
+  const lineNumbers = useMemo(
+    () =>
+      Array.from(
+        { length: Math.max(1, countLineBreaks(content) + 1) },
+        (_, i) => i + 1,
+      ).join("\n"),
+    [content],
+  );
 
   const onPlainTextChange = useCallback(
     (v: string) => {
