@@ -1224,14 +1224,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
                 className="select-none py-4 pl-3 pr-2 text-right font-mono text-sm leading-6 text-muted-foreground/70 tabular-nums sm:py-6"
                 style={{ margin: 0 }}
               >
-                {useMemo(
-                  () =>
-                    Array.from(
-                      { length: Math.max(1, countLineBreaks(content) + 1) },
-                      (_, i) => i + 1,
-                    ).join("\n"),
-                  [content],
-                )}
+                {lineNumbers}
               </pre>
               <textarea
                 ref={textareaRef}
