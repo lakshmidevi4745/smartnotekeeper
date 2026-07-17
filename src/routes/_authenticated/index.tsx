@@ -227,6 +227,7 @@ import {
   Highlighter,
   Trash,
   RotateCcw,
+  Upload,
 } from "lucide-react";
 import {
   Dialog,
