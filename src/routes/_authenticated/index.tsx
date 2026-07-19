@@ -548,6 +548,8 @@ function AppPage() {
                 activeNotebookId &&
                 newNoteM.mutate({ notebook_id: activeNotebookId, title: "" })
               }
+              aria-label="New note"
+              title="New note"
             >
               <FilePlus className="h-4 w-4" />
             </Button>
