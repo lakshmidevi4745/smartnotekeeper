@@ -837,6 +837,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   // Only updated on external changes (initial load, undo/redo, rollback) so
   // typing/pasting large content does NOT re-run ReactMarkdown on every keystroke.
   const [externalContent, setExternalContent] = useState("");
+  const [externalSyncTick, setExternalSyncTick] = useState(0);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
   const [plainTextMode, setPlainTextMode] = useState(false);
 
