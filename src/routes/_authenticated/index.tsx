@@ -1163,6 +1163,13 @@ function NoteEditor({ noteId }: { noteId: string }) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
+    // Also cancel the debounced HTML→markdown capture — otherwise a queued
+    // capture reads the stale editor DOM after rollback/commit and re-saves
+    // the discarded text.
+    if (captureTimer.current) {
+      clearTimeout(captureTimer.current);
+      captureTimer.current = null;
+    }
     // Invalidate any in-flight save so its resolution can't flip state back.
     saveSeqRef.current++;
   }, []);
