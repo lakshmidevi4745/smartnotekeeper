@@ -481,7 +481,7 @@ function AppPage() {
               onRestoreNote={(id) => restoreNoteM.mutate(id)}
               onPurgeNote={(id) => purgeNoteM.mutate(id)}
             />
-            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleNewNotebook}>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleNewNotebook} aria-label="New notebook" title="New notebook">
               <Plus className="h-4 w-4" />
             </Button>
           </div>
@@ -548,6 +548,8 @@ function AppPage() {
                 activeNotebookId &&
                 newNoteM.mutate({ notebook_id: activeNotebookId, title: "" })
               }
+              aria-label="New note"
+              title="New note"
             >
               <FilePlus className="h-4 w-4" />
             </Button>
@@ -837,6 +839,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
   // Only updated on external changes (initial load, undo/redo, rollback) so
   // typing/pasting large content does NOT re-run ReactMarkdown on every keystroke.
   const [externalContent, setExternalContent] = useState("");
+  const [externalSyncTick, setExternalSyncTick] = useState(0);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
   const [plainTextMode, setPlainTextMode] = useState(false);
 
@@ -887,11 +890,11 @@ function NoteEditor({ noteId }: { noteId: string }) {
   // (initial load, undo/redo, rollback). Internal typing sets lastRenderedRef
   // first to avoid wiping the user's caret.
   useEffect(() => {
-    if (lastRenderedRef.current === externalContent) return;
     if (externalContent.length > LARGE_CONTENT_LIMIT) {
       lastRenderedRef.current = externalContent;
       return;
     }
+    if (lastRenderedRef.current === externalContent && externalSyncTick === 0) return;
     requestAnimationFrame(() => {
       if (!hiddenRef.current || !editableRef.current) return;
       const html = hiddenRef.current.innerHTML || "<p><br/></p>";
@@ -899,7 +902,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
       ensureTrailingParagraph(editableRef.current);
       lastRenderedRef.current = externalContent;
     });
-  }, [externalContent]);
+  }, [externalContent, externalSyncTick]);
 
 
 
@@ -1157,9 +1160,30 @@ function NoteEditor({ noteId }: { noteId: string }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const cancelPendingSave = useCallback(() => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    // Also cancel the debounced HTML→markdown capture — otherwise a queued
+    // capture reads the stale editor DOM after rollback/commit and re-saves
+    // the discarded text.
+    if (captureTimer.current) {
+      clearTimeout(captureTimer.current);
+      captureTimer.current = null;
+    }
+    // Invalidate any in-flight save so its resolution can't flip state back.
+    saveSeqRef.current++;
+  }, []);
+
   const commitM = useMutation({
-    mutationFn: () => commitNote({ data: { id: noteId, content } }),
+    mutationFn: async () => {
+      // Flush the debounce so we commit exactly what the user sees.
+      cancelPendingSave();
+      return commitNote({ data: { id: noteId, content } });
+    },
     onSuccess: () => {
+      setSaveState("saved");
       toast.success("Committed");
       qc.invalidateQueries({ queryKey: ["note", noteId] });
     },
@@ -1168,12 +1192,23 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const [rollbackOpen, setRollbackOpen] = useState(false);
   const rollbackM = useMutation({
-    mutationFn: () => rollbackNote({ data: { id: noteId } }),
+    mutationFn: () => {
+      // Drop any pending debounced save so it can't overwrite the rollback.
+      cancelPendingSave();
+      return rollbackNote({ data: { id: noteId } });
+    },
     onSuccess: (res) => {
       const c = res?.content ?? "";
+      cancelPendingSave();
+      lastRenderedRef.current = null;
       setContent(c);
       setExternalContent(c);
+      // Force the sync effect to fire even if externalContent didn't change,
+      // so the user's post-commit keystrokes disappear from the editor DOM.
+      setExternalSyncTick((t) => t + 1);
+      if (textareaRef.current) textareaRef.current.value = c;
       pushHistory(c);
+      setSaveState("saved");
       toast.success("Rolled back to last commit");
       qc.invalidateQueries({ queryKey: ["note", noteId] });
     },
