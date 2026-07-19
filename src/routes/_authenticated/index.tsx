@@ -1157,9 +1157,23 @@ function NoteEditor({ noteId }: { noteId: string }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const cancelPendingSave = useCallback(() => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    // Invalidate any in-flight save so its resolution can't flip state back.
+    saveSeqRef.current++;
+  }, []);
+
   const commitM = useMutation({
-    mutationFn: () => commitNote({ data: { id: noteId, content } }),
+    mutationFn: async () => {
+      // Flush the debounce so we commit exactly what the user sees.
+      cancelPendingSave();
+      return commitNote({ data: { id: noteId, content } });
+    },
     onSuccess: () => {
+      setSaveState("saved");
       toast.success("Committed");
       qc.invalidateQueries({ queryKey: ["note", noteId] });
     },
@@ -1168,12 +1182,18 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const [rollbackOpen, setRollbackOpen] = useState(false);
   const rollbackM = useMutation({
-    mutationFn: () => rollbackNote({ data: { id: noteId } }),
+    mutationFn: () => {
+      // Drop any pending debounced save so it can't overwrite the rollback.
+      cancelPendingSave();
+      return rollbackNote({ data: { id: noteId } });
+    },
     onSuccess: (res) => {
       const c = res?.content ?? "";
+      cancelPendingSave();
       setContent(c);
       setExternalContent(c);
       pushHistory(c);
+      setSaveState("saved");
       toast.success("Rolled back to last commit");
       qc.invalidateQueries({ queryKey: ["note", noteId] });
     },
