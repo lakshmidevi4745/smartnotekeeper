@@ -1191,23 +1191,12 @@ function NoteEditor({ noteId }: { noteId: string }) {
     onSuccess: (res) => {
       const c = res?.content ?? "";
       cancelPendingSave();
-      // Force the hidden-markdown -> editable sync to re-run even when the
-      // rollback target equals the last externally-synced value (user typed
-      // after commit, so `content` diverged but `externalContent` did not).
       lastRenderedRef.current = null;
       setContent(c);
       setExternalContent(c);
-      // If externalContent didn't actually change, the effect won't fire —
-      // wipe the editor DOM directly so the stale keystrokes disappear.
-      requestAnimationFrame(() => {
-        if (!editableRef.current) return;
-        if (lastRenderedRef.current !== c) {
-          const html = hiddenRef.current?.innerHTML || "<p><br/></p>";
-          editableRef.current.innerHTML = html;
-          ensureTrailingParagraph(editableRef.current);
-          lastRenderedRef.current = c;
-        }
-      });
+      // Force the sync effect to fire even if externalContent didn't change,
+      // so the user's post-commit keystrokes disappear from the editor DOM.
+      setExternalSyncTick((t) => t + 1);
       if (textareaRef.current) textareaRef.current.value = c;
       pushHistory(c);
       setSaveState("saved");
