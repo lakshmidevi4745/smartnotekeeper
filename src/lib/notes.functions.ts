@@ -171,7 +171,7 @@ export const createNote = createServerFn({ method: "POST" })
       .insert({
         notebook_id: data.notebook_id,
         user_id: context.userId,
-        title: data.title || "Untitled",
+        title: data.title ?? "Untitled",
         content: data.content ?? "",
       })
       .select("id, notebook_id, title, updated_at")

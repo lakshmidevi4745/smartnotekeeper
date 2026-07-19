@@ -546,7 +546,7 @@ function AppPage() {
               disabled={!activeNotebookId}
               onClick={() =>
                 activeNotebookId &&
-                newNoteM.mutate({ notebook_id: activeNotebookId, title: "Untitled" })
+                newNoteM.mutate({ notebook_id: activeNotebookId, title: "" })
               }
             >
               <FilePlus className="h-4 w-4" />
@@ -630,7 +630,7 @@ function AppPage() {
               {activeNotebookId && (
                 <Button
                   onClick={() =>
-                    newNoteM.mutate({ notebook_id: activeNotebookId, title: "Untitled" })
+                    newNoteM.mutate({ notebook_id: activeNotebookId, title: "" })
                   }
                   disabled={newNoteM.isPending}
                 >
@@ -1505,7 +1505,7 @@ function MarkdownView({ source }: { source: string }) {
           },
         }}
       >
-        {source || "*Empty note*"}
+        {source || ""}
       </ReactMarkdown>
     </div>
   );
