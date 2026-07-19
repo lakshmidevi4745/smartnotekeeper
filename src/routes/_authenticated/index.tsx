@@ -481,7 +481,7 @@ function AppPage() {
               onRestoreNote={(id) => restoreNoteM.mutate(id)}
               onPurgeNote={(id) => purgeNoteM.mutate(id)}
             />
-            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleNewNotebook}>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleNewNotebook} aria-label="New notebook" title="New notebook">
               <Plus className="h-4 w-4" />
             </Button>
           </div>
