@@ -888,11 +888,11 @@ function NoteEditor({ noteId }: { noteId: string }) {
   // (initial load, undo/redo, rollback). Internal typing sets lastRenderedRef
   // first to avoid wiping the user's caret.
   useEffect(() => {
-    if (lastRenderedRef.current === externalContent) return;
     if (externalContent.length > LARGE_CONTENT_LIMIT) {
       lastRenderedRef.current = externalContent;
       return;
     }
+    if (lastRenderedRef.current === externalContent && externalSyncTick === 0) return;
     requestAnimationFrame(() => {
       if (!hiddenRef.current || !editableRef.current) return;
       const html = hiddenRef.current.innerHTML || "<p><br/></p>";
@@ -900,7 +900,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
       ensureTrailingParagraph(editableRef.current);
       lastRenderedRef.current = externalContent;
     });
-  }, [externalContent]);
+  }, [externalContent, externalSyncTick]);
 
 
 
