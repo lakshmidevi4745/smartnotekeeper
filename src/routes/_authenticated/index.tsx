@@ -929,9 +929,13 @@ function NoteEditor({ noteId }: { noteId: string }) {
         try {
           await updateNote({ data: { id: noteId, ...next } });
           if (seq === saveSeqRef.current) {
-            localChangeRef.current = false;
+            // Keep localChangeRef=true for the lifetime of this note editor
+            // (the component is keyed by noteId, so it remounts on switch).
+            // Resetting it here caused a race: a remote refetch fired by our
+            // own realtime broadcast — or by a subsequent edit — could
+            // overwrite freshly-typed/pasted content with the just-saved value,
+            // making new pastes appear to vanish until refresh.
             setSaveState("saved");
-            qc.invalidateQueries({ queryKey: ["notes"] });
           }
         } catch (e) {
           if (seq === saveSeqRef.current) setSaveState("dirty");
