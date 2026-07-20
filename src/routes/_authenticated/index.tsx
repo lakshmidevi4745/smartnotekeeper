@@ -13,8 +13,21 @@ const turndown = new TurndownService({
   headingStyle: "atx",
   codeBlockStyle: "fenced",
   bulletListMarker: "-",
+  emDelimiter: "*",
 });
+// Keep tables verbatim so column layout survives round-trips.
 turndown.keep(["table", "thead", "tbody", "tr", "th", "td"]);
+// Preserve inline formatting Turndown would otherwise drop: colors, font
+// sizes, highlights, underline, spans/divs with a style attribute. Without
+// this, the OLD text loses its formatting on the next round-trip whenever
+// the user pastes again (because we re-serialize the whole editor).
+turndown.keep((node) => {
+  if (!(node instanceof HTMLElement)) return false;
+  const tag = node.tagName;
+  if (tag === "U" || tag === "MARK" || tag === "FONT" || tag === "SUB" || tag === "SUP") return true;
+  if ((tag === "SPAN" || tag === "DIV") && node.getAttribute("style")) return true;
+  return false;
+});
 
 const RICH_TEXT_PASTE_LIMIT = 8_000;
 const LARGE_CONTENT_LIMIT = 20_000;
@@ -22,6 +35,29 @@ const LARGE_TOC_PARSE_LIMIT = 50_000;
 
 function htmlToMarkdown(html: string): string {
   return turndown.turndown(html).replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// Extract just the body fragment from a clipboard HTML payload and strip
+// meta/head/script/style/comment noise. Word, Google Docs, and Gemini all
+// ship bulky wrappers that confuse execCommand("insertHTML") — the paste
+// can end up invisible until a hard refresh re-renders from the DB.
+function sanitizeClipboardHtml(html: string): string {
+  if (!html) return "";
+  try {
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    parsed.querySelectorAll("script,style,meta,link,title").forEach((n) => n.remove());
+    const walker = parsed.createTreeWalker(parsed, NodeFilter.SHOW_COMMENT);
+    const toRemove: Node[] = [];
+    let n: Node | null = walker.nextNode();
+    while (n) {
+      toRemove.push(n);
+      n = walker.nextNode();
+    }
+    toRemove.forEach((node) => node.parentNode?.removeChild(node));
+    return parsed.body?.innerHTML?.trim() || html;
+  } catch {
+    return html;
+  }
 }
 
 function ensureTrailingParagraph(root: HTMLElement) {
