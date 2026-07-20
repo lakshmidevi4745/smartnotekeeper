@@ -8,6 +8,33 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { z } from "zod";
 import TurndownService from "turndown";
+import { marked } from "marked";
+
+// Detect if a plain-text paste looks like Markdown so we can auto-format
+// headings, lists, tables, code blocks, bold/italic, links, blockquotes.
+function looksLikeMarkdown(text: string): boolean {
+  if (!text) return false;
+  const patterns = [
+    /^#{1,6}\s+\S/m,            // # headings
+    /^\s*[-*+]\s+\S/m,          // bullet lists
+    /^\s*\d+\.\s+\S/m,          // ordered lists
+    /^\s*>\s+\S/m,              // blockquote
+    /```[\s\S]*?```/,           // fenced code
+    /^\|.+\|.*\n\|[\s:-]+\|/m,  // table
+    /\*\*[^*\n]+\*\*/,          // bold
+    /\[[^\]\n]+\]\([^)\n]+\)/,  // link
+    /^---+$/m,                  // hr
+  ];
+  return patterns.some((re) => re.test(text));
+}
+
+function markdownToHtml(md: string): string {
+  try {
+    return marked.parse(md, { async: false, gfm: true, breaks: true }) as string;
+  } catch {
+    return "";
+  }
+}
 
 const turndown = new TurndownService({
   headingStyle: "atx",
