@@ -1420,11 +1420,14 @@ function NoteEditor({ noteId }: { noteId: string }) {
                 const html = e.clipboardData.getData("text/html");
                 const text = e.clipboardData.getData("text/plain");
                 const hasTextItem = hasClipboardTextItem(e.clipboardData);
-                // Large pastes bypass the DOM entirely. Rendering hundreds of
-                // thousands of characters into contentEditable is what freezes
-                // the page, so switch to the plain-text editor immediately.
+                // Prefer formatted HTML pastes up to the large-doc limit so
+                // copies from AI chats (Gemini, ChatGPT, etc.) keep headings,
+                // lists, tables, code blocks. Only fall back to the plain
+                // fast path when the payload is truly huge or HTML is absent.
+                const htmlTooBig = html.length >= LARGE_CONTENT_LIMIT;
+                const plainTooBig = !html && text.length >= RICH_TEXT_PASTE_LIMIT;
                 if (
-                  (text.length >= RICH_TEXT_PASTE_LIMIT || html.length >= RICH_TEXT_PASTE_LIMIT || (!text && !html && hasTextItem)) &&
+                  (htmlTooBig || plainTooBig || (!text && !html && hasTextItem)) &&
                   editableRef.current
                 ) {
                   e.preventDefault();
@@ -1441,7 +1444,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   return;
                 }
 
-                if (html && html.length < RICH_TEXT_PASTE_LIMIT) {
+                if (html) {
                   e.preventDefault();
                   try {
                     document.execCommand("insertHTML", false, html);
