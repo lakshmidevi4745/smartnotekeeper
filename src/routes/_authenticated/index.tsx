@@ -8,6 +8,33 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { z } from "zod";
 import TurndownService from "turndown";
+import { marked } from "marked";
+
+// Detect if a plain-text paste looks like Markdown so we can auto-format
+// headings, lists, tables, code blocks, bold/italic, links, blockquotes.
+function looksLikeMarkdown(text: string): boolean {
+  if (!text) return false;
+  const patterns = [
+    /^#{1,6}\s+\S/m,            // # headings
+    /^\s*[-*+]\s+\S/m,          // bullet lists
+    /^\s*\d+\.\s+\S/m,          // ordered lists
+    /^\s*>\s+\S/m,              // blockquote
+    /```[\s\S]*?```/,           // fenced code
+    /^\|.+\|.*\n\|[\s:-]+\|/m,  // table
+    /\*\*[^*\n]+\*\*/,          // bold
+    /\[[^\]\n]+\]\([^)\n]+\)/,  // link
+    /^---+$/m,                  // hr
+  ];
+  return patterns.some((re) => re.test(text));
+}
+
+function markdownToHtml(md: string): string {
+  try {
+    return marked.parse(md, { async: false, gfm: true, breaks: true }) as string;
+  } catch {
+    return "";
+  }
+}
 
 const turndown = new TurndownService({
   headingStyle: "atx",
@@ -1480,31 +1507,34 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   return;
                 }
 
-                if (html) {
+                // If no HTML but the plain text looks like Markdown, render
+                // it to HTML so headings/tables/lists auto-format on paste.
+                let htmlToInsert = html ? sanitizeClipboardHtml(html) : "";
+                if (!htmlToInsert && text && looksLikeMarkdown(text) && text.length < LARGE_CONTENT_LIMIT) {
+                  const rendered = markdownToHtml(text);
+                  if (rendered) htmlToInsert = sanitizeClipboardHtml(rendered);
+                }
+
+                if (htmlToInsert) {
                   e.preventDefault();
-                  const clean = sanitizeClipboardHtml(html);
                   let inserted = false;
                   try {
-                    inserted = document.execCommand("insertHTML", false, clean);
+                    inserted = document.execCommand("insertHTML", false, htmlToInsert);
                   } catch {
                     inserted = false;
                   }
-                  // Fallback: insertHTML can silently fail on some browsers
-                  // when the payload is a full HTML document. Manually splice
-                  // the sanitized fragment at the caret so the paste always
-                  // shows up immediately (fixes "paste only shows after refresh").
                   if (!inserted && editableRef.current) {
                     const sel = window.getSelection();
                     if (sel && sel.rangeCount > 0 && editableRef.current.contains(sel.getRangeAt(0).commonAncestorContainer)) {
                       const range = sel.getRangeAt(0);
                       range.deleteContents();
-                      const frag = document.createRange().createContextualFragment(clean);
+                      const frag = document.createRange().createContextualFragment(htmlToInsert);
                       range.insertNode(frag);
                       range.collapse(false);
                       sel.removeAllRanges();
                       sel.addRange(range);
                     } else {
-                      editableRef.current.insertAdjacentHTML("beforeend", clean);
+                      editableRef.current.insertAdjacentHTML("beforeend", htmlToInsert);
                     }
                   }
                 }
