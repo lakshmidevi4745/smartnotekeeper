@@ -52,7 +52,30 @@ turndown.keep((node) => {
   if (!(node instanceof HTMLElement)) return false;
   const tag = node.tagName;
   if (tag === "U" || tag === "MARK" || tag === "FONT" || tag === "SUB" || tag === "SUP") return true;
-  if ((tag === "SPAN" || tag === "DIV") && node.getAttribute("style")) return true;
+  if (
+    node.getAttribute("style") &&
+    [
+      "SPAN",
+      "DIV",
+      "P",
+      "H1",
+      "H2",
+      "H3",
+      "H4",
+      "H5",
+      "H6",
+      "LI",
+      "UL",
+      "OL",
+      "PRE",
+      "CODE",
+      "BLOCKQUOTE",
+      "STRONG",
+      "EM",
+      "B",
+      "I",
+    ].includes(tag)
+  ) return true;
   return false;
 });
 
@@ -1159,6 +1182,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
         : htmlToMarkdown(editableRef.current.innerHTML);
     lastRenderedRef.current = md;
     largePasteRef.current = md.length > LARGE_CONTENT_LIMIT;
+    setExternalContent(md);
     onContentChange(md);
   }, [onContentChange]);
   const captureFromEditable = useCallback(() => {
@@ -1564,31 +1588,14 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   const rendered = markdownToHtml(text);
                   if (rendered) htmlToInsert = sanitizeClipboardHtml(rendered);
                 }
+                if (!htmlToInsert && text) {
+                  htmlToInsert = plainTextToHtml(text);
+                }
 
                 if (htmlToInsert) {
                   e.preventDefault();
-                  let inserted = false;
-                  try {
-                    inserted = document.execCommand("insertHTML", false, htmlToInsert);
-                  } catch {
-                    inserted = false;
-                  }
-                  if (!inserted && editableRef.current) {
-                    const sel = window.getSelection();
-                    if (sel && sel.rangeCount > 0 && editableRef.current.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-                      const range = sel.getRangeAt(0);
-                      range.deleteContents();
-                      const frag = document.createRange().createContextualFragment(htmlToInsert);
-                      range.insertNode(frag);
-                      range.collapse(false);
-                      sel.removeAllRanges();
-                      sel.addRange(range);
-                    } else {
-                      editableRef.current.insertAdjacentHTML("beforeend", htmlToInsert);
-                    }
-                  }
+                  if (editableRef.current) insertHtmlAtSelection(editableRef.current, htmlToInsert);
                 }
-                // else: let the browser handle small plain-text paste natively
                 if (editableRef.current) ensureTrailingParagraph(editableRef.current);
                 // Run capture synchronously so `content` reflects the paste
                 // before any subsequent event fires, and update externalContent
@@ -1599,11 +1606,12 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   captureTimer.current = null;
                 }
                 if (editableRef.current) {
-                  const md = htmlToMarkdown(editableRef.current.innerHTML);
+                  const md = cleanEditorHtml(editableRef.current.innerHTML);
                   // Mark this innerHTML as already-rendered so the sync
                   // effect (driven by externalContent) doesn't fire and
                   // overwrite the freshly-pasted DOM on the next tick.
                   lastRenderedRef.current = md;
+                  setExternalContent(md);
                   onContentChange(md);
                 }
               }}
