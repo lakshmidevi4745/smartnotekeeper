@@ -52,16 +52,89 @@ turndown.keep((node) => {
   if (!(node instanceof HTMLElement)) return false;
   const tag = node.tagName;
   if (tag === "U" || tag === "MARK" || tag === "FONT" || tag === "SUB" || tag === "SUP") return true;
-  if ((tag === "SPAN" || tag === "DIV") && node.getAttribute("style")) return true;
+  if (
+    node.getAttribute("style") &&
+    [
+      "SPAN",
+      "DIV",
+      "P",
+      "H1",
+      "H2",
+      "H3",
+      "H4",
+      "H5",
+      "H6",
+      "LI",
+      "UL",
+      "OL",
+      "PRE",
+      "CODE",
+      "BLOCKQUOTE",
+      "STRONG",
+      "EM",
+      "B",
+      "I",
+    ].includes(tag)
+  ) return true;
   return false;
 });
 
-const RICH_TEXT_PASTE_LIMIT = 8_000;
-const LARGE_CONTENT_LIMIT = 20_000;
+const RICH_TEXT_PASTE_LIMIT = 120_000;
+const LARGE_CONTENT_LIMIT = 200_000;
 const LARGE_TOC_PARSE_LIMIT = 50_000;
 
 function htmlToMarkdown(html: string): string {
   return turndown.turndown(html).replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function cleanEditorHtml(html: string): string {
+  return sanitizeClipboardHtml(html)
+    .replace(/ contenteditable="[^\"]*"/gi, "")
+    .replace(/ data-[\w-]+="[^\"]*"/gi, "")
+    .trim();
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function plainTextToHtml(text: string): string {
+  const normalized = text.replace(/\r\n?/g, "\n");
+  if (!normalized) return "";
+  return normalized
+    .split(/\n{2,}/)
+    .map((block) => {
+      const lines = block.split("\n");
+      const body = lines.map((line) => escapeHtml(line) || "<br/>").join("<br/>");
+      return `<p>${body}</p>`;
+    })
+    .join("");
+}
+
+function insertHtmlAtSelection(root: HTMLElement, html: string) {
+  root.focus({ preventScroll: true });
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || !root.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+    root.insertAdjacentHTML("beforeend", html);
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const marker = document.createTextNode("");
+  const fragment = range.createContextualFragment(html);
+  fragment.appendChild(marker);
+  range.insertNode(fragment);
+  range.setStartAfter(marker);
+  range.collapse(true);
+  marker.parentNode?.removeChild(marker);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 // Extract just the body fragment from a clipboard HTML payload and strip
@@ -937,11 +1010,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
     setTitle(noteQ.data.title);
     setContent(noteQ.data.content);
     setExternalContent(noteQ.data.content);
-    setPlainTextMode(
-      noteQ.data.content.length === 0 ||
-        noteQ.data.content.length >= LARGE_CONTENT_LIMIT ||
-        (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches),
-    );
+    setPlainTextMode(noteQ.data.content.length >= LARGE_CONTENT_LIMIT);
     undoStack.current = [noteQ.data.content];
     redoStack.current = [];
     lastPushedRef.current = noteQ.data.content;
@@ -1046,7 +1115,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const onPlainTextChange = useCallback(
     (v: string) => {
-      setPlainTextMode(true);
+      setPlainTextMode(v.length >= LARGE_CONTENT_LIMIT);
       onContentChange(v);
       if (v.length < LARGE_CONTENT_LIMIT) {
         setExternalContent(v);
@@ -1109,6 +1178,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
         : htmlToMarkdown(editableRef.current.innerHTML);
     lastRenderedRef.current = md;
     largePasteRef.current = md.length > LARGE_CONTENT_LIMIT;
+    setExternalContent(md);
     onContentChange(md);
   }, [onContentChange]);
   const captureFromEditable = useCallback(() => {
@@ -1514,31 +1584,14 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   const rendered = markdownToHtml(text);
                   if (rendered) htmlToInsert = sanitizeClipboardHtml(rendered);
                 }
+                if (!htmlToInsert && text) {
+                  htmlToInsert = plainTextToHtml(text);
+                }
 
                 if (htmlToInsert) {
                   e.preventDefault();
-                  let inserted = false;
-                  try {
-                    inserted = document.execCommand("insertHTML", false, htmlToInsert);
-                  } catch {
-                    inserted = false;
-                  }
-                  if (!inserted && editableRef.current) {
-                    const sel = window.getSelection();
-                    if (sel && sel.rangeCount > 0 && editableRef.current.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-                      const range = sel.getRangeAt(0);
-                      range.deleteContents();
-                      const frag = document.createRange().createContextualFragment(htmlToInsert);
-                      range.insertNode(frag);
-                      range.collapse(false);
-                      sel.removeAllRanges();
-                      sel.addRange(range);
-                    } else {
-                      editableRef.current.insertAdjacentHTML("beforeend", htmlToInsert);
-                    }
-                  }
+                  if (editableRef.current) insertHtmlAtSelection(editableRef.current, htmlToInsert);
                 }
-                // else: let the browser handle small plain-text paste natively
                 if (editableRef.current) ensureTrailingParagraph(editableRef.current);
                 // Run capture synchronously so `content` reflects the paste
                 // before any subsequent event fires, and update externalContent
@@ -1549,11 +1602,12 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   captureTimer.current = null;
                 }
                 if (editableRef.current) {
-                  const md = htmlToMarkdown(editableRef.current.innerHTML);
+                  const md = cleanEditorHtml(editableRef.current.innerHTML);
                   // Mark this innerHTML as already-rendered so the sync
                   // effect (driven by externalContent) doesn't fire and
                   // overwrite the freshly-pasted DOM on the next tick.
                   lastRenderedRef.current = md;
+                  setExternalContent(md);
                   onContentChange(md);
                 }
               }}
