@@ -56,12 +56,62 @@ turndown.keep((node) => {
   return false;
 });
 
-const RICH_TEXT_PASTE_LIMIT = 8_000;
-const LARGE_CONTENT_LIMIT = 20_000;
+const RICH_TEXT_PASTE_LIMIT = 120_000;
+const LARGE_CONTENT_LIMIT = 200_000;
 const LARGE_TOC_PARSE_LIMIT = 50_000;
 
 function htmlToMarkdown(html: string): string {
   return turndown.turndown(html).replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function cleanEditorHtml(html: string): string {
+  return sanitizeClipboardHtml(html)
+    .replace(/ contenteditable="[^\"]*"/gi, "")
+    .replace(/ data-[\w-]+="[^\"]*"/gi, "")
+    .trim();
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function plainTextToHtml(text: string): string {
+  const normalized = text.replace(/\r\n?/g, "\n");
+  if (!normalized) return "";
+  return normalized
+    .split(/\n{2,}/)
+    .map((block) => {
+      const lines = block.split("\n");
+      const body = lines.map((line) => escapeHtml(line) || "<br/>").join("<br/>");
+      return `<p>${body}</p>`;
+    })
+    .join("");
+}
+
+function insertHtmlAtSelection(root: HTMLElement, html: string) {
+  root.focus({ preventScroll: true });
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || !root.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+    root.insertAdjacentHTML("beforeend", html);
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const marker = document.createTextNode("");
+  const fragment = range.createContextualFragment(html);
+  fragment.appendChild(marker);
+  range.insertNode(fragment);
+  range.setStartAfter(marker);
+  range.collapse(true);
+  marker.parentNode?.removeChild(marker);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 // Extract just the body fragment from a clipboard HTML payload and strip
