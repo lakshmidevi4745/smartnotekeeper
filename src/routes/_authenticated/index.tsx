@@ -94,6 +94,17 @@ function cleanEditorHtml(html: string): string {
     .trim();
 }
 
+function looksLikeHtml(value: string): boolean {
+  return /<\/?(?:p|div|span|h[1-6]|ul|ol|li|table|thead|tbody|tr|th|td|pre|code|blockquote|strong|b|em|i|u|mark|br)\b/i.test(value);
+}
+
+function sourceToEditorHtml(source: string): string {
+  const trimmed = source.trim();
+  if (!trimmed) return "<p><br/></p>";
+  const rendered = markdownToHtml(trimmed);
+  return cleanEditorHtml(rendered || trimmed) || plainTextToHtml(trimmed) || "<p><br/></p>";
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -1028,8 +1039,8 @@ function NoteEditor({ noteId }: { noteId: string }) {
     }
     if (lastRenderedRef.current === externalContent && externalSyncTick === 0) return;
     requestAnimationFrame(() => {
-      if (!hiddenRef.current || !editableRef.current) return;
-      const html = hiddenRef.current.innerHTML || "<p><br/></p>";
+      if (!editableRef.current) return;
+      const html = sourceToEditorHtml(externalContent);
       editableRef.current.innerHTML = html;
       ensureTrailingParagraph(editableRef.current);
       lastRenderedRef.current = externalContent;
@@ -1175,7 +1186,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
     const md =
       largePasteRef.current || textSize > LARGE_CONTENT_LIMIT
         ? editableToPlainText(editableRef.current)
-        : htmlToMarkdown(editableRef.current.innerHTML);
+        : cleanEditorHtml(editableRef.current.innerHTML);
     lastRenderedRef.current = md;
     largePasteRef.current = md.length > LARGE_CONTENT_LIMIT;
     setExternalContent(md);
@@ -1590,6 +1601,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
                 if (htmlToInsert) {
                   e.preventDefault();
+                  bulkPasteRef.current = true;
                   if (editableRef.current) insertHtmlAtSelection(editableRef.current, htmlToInsert);
                 }
                 if (editableRef.current) ensureTrailingParagraph(editableRef.current);
@@ -1610,6 +1622,9 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   setExternalContent(md);
                   onContentChange(md);
                 }
+                requestAnimationFrame(() => {
+                  bulkPasteRef.current = false;
+                });
               }}
 
               className="prose prose-slate dark:prose-invert mx-auto min-h-full max-w-3xl p-4 outline-none focus:outline-none sm:p-6 prose-headings:font-semibold prose-h1:text-3xl prose-h1:mt-6 prose-h1:mb-4 prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-3 prose-h3:text-xl prose-h3:mt-5 prose-h3:mb-2 prose-p:my-3 prose-p:leading-7 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-blockquote:border-l-4 prose-blockquote:border-primary/40 prose-blockquote:pl-4 prose-blockquote:italic prose-hr:my-6 prose-strong:font-semibold prose-a:text-primary"
