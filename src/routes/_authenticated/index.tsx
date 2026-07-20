@@ -1520,8 +1520,10 @@ function NoteEditor({ noteId }: { noteId: string }) {
                 }
                 if (editableRef.current) {
                   const md = htmlToMarkdown(editableRef.current.innerHTML);
+                  // Mark this innerHTML as already-rendered so the sync
+                  // effect (driven by externalContent) doesn't fire and
+                  // overwrite the freshly-pasted DOM on the next tick.
                   lastRenderedRef.current = md;
-                  setExternalContent(md);
                   onContentChange(md);
                 }
               }}
