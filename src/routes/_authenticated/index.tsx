@@ -1010,11 +1010,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
     setTitle(noteQ.data.title);
     setContent(noteQ.data.content);
     setExternalContent(noteQ.data.content);
-    setPlainTextMode(
-      noteQ.data.content.length === 0 ||
-        noteQ.data.content.length >= LARGE_CONTENT_LIMIT ||
-        (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches),
-    );
+    setPlainTextMode(noteQ.data.content.length >= LARGE_CONTENT_LIMIT);
     undoStack.current = [noteQ.data.content];
     redoStack.current = [];
     lastPushedRef.current = noteQ.data.content;
@@ -1119,7 +1115,7 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
   const onPlainTextChange = useCallback(
     (v: string) => {
-      setPlainTextMode(true);
+      setPlainTextMode(v.length >= LARGE_CONTENT_LIMIT);
       onContentChange(v);
       if (v.length < LARGE_CONTENT_LIMIT) {
         setExternalContent(v);
