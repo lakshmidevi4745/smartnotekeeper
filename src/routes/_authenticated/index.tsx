@@ -1482,15 +1482,48 @@ function NoteEditor({ noteId }: { noteId: string }) {
 
                 if (html) {
                   e.preventDefault();
+                  const clean = sanitizeClipboardHtml(html);
+                  let inserted = false;
                   try {
-                    document.execCommand("insertHTML", false, html);
+                    inserted = document.execCommand("insertHTML", false, clean);
                   } catch {
-                    /* ignore */
+                    inserted = false;
+                  }
+                  // Fallback: insertHTML can silently fail on some browsers
+                  // when the payload is a full HTML document. Manually splice
+                  // the sanitized fragment at the caret so the paste always
+                  // shows up immediately (fixes "paste only shows after refresh").
+                  if (!inserted && editableRef.current) {
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount > 0 && editableRef.current.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+                      const range = sel.getRangeAt(0);
+                      range.deleteContents();
+                      const frag = document.createRange().createContextualFragment(clean);
+                      range.insertNode(frag);
+                      range.collapse(false);
+                      sel.removeAllRanges();
+                      sel.addRange(range);
+                    } else {
+                      editableRef.current.insertAdjacentHTML("beforeend", clean);
+                    }
                   }
                 }
                 // else: let the browser handle small plain-text paste natively
                 if (editableRef.current) ensureTrailingParagraph(editableRef.current);
-                captureFromEditable();
+                // Run capture synchronously so `content` reflects the paste
+                // before any subsequent event fires, and update externalContent
+                // so the hidden renderer stays in sync (prevents old text from
+                // reverting to unstyled markdown on the next render cycle).
+                if (captureTimer.current) {
+                  clearTimeout(captureTimer.current);
+                  captureTimer.current = null;
+                }
+                if (editableRef.current) {
+                  const md = htmlToMarkdown(editableRef.current.innerHTML);
+                  lastRenderedRef.current = md;
+                  setExternalContent(md);
+                  onContentChange(md);
+                }
               }}
 
               className="prose prose-slate dark:prose-invert mx-auto min-h-full max-w-3xl p-4 outline-none focus:outline-none sm:p-6 prose-headings:font-semibold prose-h1:text-3xl prose-h1:mt-6 prose-h1:mb-4 prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-3 prose-h3:text-xl prose-h3:mt-5 prose-h3:mb-2 prose-p:my-3 prose-p:leading-7 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-table:my-4 prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-blockquote:border-l-4 prose-blockquote:border-primary/40 prose-blockquote:pl-4 prose-blockquote:italic prose-hr:my-6 prose-strong:font-semibold prose-a:text-primary"
