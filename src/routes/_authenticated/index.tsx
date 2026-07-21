@@ -101,6 +101,13 @@ function looksLikeHtml(value: string): boolean {
 function sourceToEditorHtml(source: string): string {
   const trimmed = source.trim();
   if (!trimmed) return "<p><br/></p>";
+  // New notes are saved as the editor's raw HTML so repeated pastes do not
+  // re-run the whole document through Markdown and strip older rich formatting.
+  // Older notes may still be Markdown, so only use Markdown rendering when the
+  // stored content is not already HTML.
+  if (looksLikeHtml(trimmed)) {
+    return cleanEditorHtml(trimmed) || "<p><br/></p>";
+  }
   const rendered = markdownToHtml(trimmed);
   return cleanEditorHtml(rendered || trimmed) || plainTextToHtml(trimmed) || "<p><br/></p>";
 }
@@ -1189,7 +1196,10 @@ function NoteEditor({ noteId }: { noteId: string }) {
         : cleanEditorHtml(editableRef.current.innerHTML);
     lastRenderedRef.current = md;
     largePasteRef.current = md.length > LARGE_CONTENT_LIMIT;
-    setExternalContent(md);
+    // Do not update externalContent for local typing/pasting. externalContent
+    // is only for initial load / undo / rollback hydration. Updating it here
+    // can cause the sync effect to replace the live editor DOM and normalize
+    // previously pasted HTML.
     onContentChange(md);
   }, [onContentChange]);
   const captureFromEditable = useCallback(() => {
@@ -1619,7 +1629,6 @@ function NoteEditor({ noteId }: { noteId: string }) {
                   // effect (driven by externalContent) doesn't fire and
                   // overwrite the freshly-pasted DOM on the next tick.
                   lastRenderedRef.current = md;
-                  setExternalContent(md);
                   onContentChange(md);
                 }
                 requestAnimationFrame(() => {
