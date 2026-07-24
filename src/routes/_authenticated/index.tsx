@@ -342,6 +342,10 @@ import {
   listDeletedNotes,
   restoreNote,
   purgeNote,
+  listNoteVersions,
+  saveNoteVersion,
+  restoreNoteVersion,
+  deleteNoteVersion,
 } from "@/lib/notes.functions";
 
 import { Button } from "@/components/ui/button";
