@@ -242,6 +242,88 @@ export const rollbackNote = createServerFn({ method: "POST" })
     return { content: row.committed_content };
   });
 
+export const listNoteVersions = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ note_id: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await context.supabase
+      .from("note_versions")
+      .select("id, name, created_at")
+      .eq("note_id", data.note_id)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+export const saveNoteVersion = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ note_id: uuid, name: z.string().min(1).max(120) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: note, error: selErr } = await context.supabase
+      .from("notes")
+      .select("content")
+      .eq("id", data.note_id)
+      .single();
+    if (selErr) throw new Error(selErr.message);
+    const { data: row, error } = await context.supabase
+      .from("note_versions")
+      .insert({
+        note_id: data.note_id,
+        user_id: context.userId,
+        name: data.name,
+        content: note.content ?? "",
+      })
+      .select("id, name, created_at")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+export const restoreNoteVersion = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: version, error: vErr } = await context.supabase
+      .from("note_versions")
+      .select("id, note_id, content")
+      .eq("id", data.id)
+      .single();
+    if (vErr) throw new Error(vErr.message);
+    const { data: currentNote, error: nErr } = await context.supabase
+      .from("notes")
+      .select("content")
+      .eq("id", version.note_id)
+      .single();
+    if (nErr) throw new Error(nErr.message);
+    const backupName = `Auto-backup before restore ${new Date().toLocaleString()}`;
+    await context.supabase.from("note_versions").insert({
+      note_id: version.note_id,
+      user_id: context.userId,
+      name: backupName,
+      content: currentNote.content ?? "",
+    });
+    const { error: upErr } = await context.supabase
+      .from("notes")
+      .update({ content: version.content })
+      .eq("id", version.note_id);
+    if (upErr) throw new Error(upErr.message);
+    return { content: version.content, note_id: version.note_id };
+  });
+
+export const deleteNoteVersion = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("note_versions")
+      .delete()
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const listAttachments = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ note_id: uuid }).parse(d))
