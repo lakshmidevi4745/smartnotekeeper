@@ -1723,6 +1723,19 @@ function NoteEditor({ noteId }: { noteId: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <VersionsDialog
+        open={versionsOpen}
+        onOpenChange={setVersionsOpen}
+        versions={versionsQ.data ?? []}
+        loading={versionsQ.isLoading}
+        defaultName={`Version ${(versionsQ.data?.length ?? 0) + 1}`}
+        onSave={(name) => saveVersionM.mutate(name)}
+        onRestore={(id) => restoreVersionM.mutate(id)}
+        onDelete={(id) => deleteVersionM.mutate(id)}
+        saving={saveVersionM.isPending}
+        restoring={restoreVersionM.isPending}
+      />
     </div>
   );
 }
