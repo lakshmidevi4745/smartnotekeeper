@@ -2013,3 +2013,129 @@ function TocPanel({
     </aside>
   );
 }
+
+type VersionRow = { id: string; name: string; created_at: string };
+
+function VersionsDialog({
+  open,
+  onOpenChange,
+  versions,
+  loading,
+  defaultName,
+  onSave,
+  onRestore,
+  onDelete,
+  saving,
+  restoring,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  versions: VersionRow[];
+  loading: boolean;
+  defaultName: string;
+  onSave: (name: string) => void;
+  onRestore: (id: string) => void;
+  onDelete: (id: string) => void;
+  saving: boolean;
+  restoring: boolean;
+}) {
+  const [name, setName] = useState(defaultName);
+  const [confirmRestore, setConfirmRestore] = useState<VersionRow | null>(null);
+  useEffect(() => {
+    if (open) setName(defaultName);
+  }, [open, defaultName]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Versions</DialogTitle>
+          <DialogDescription>
+            Save named snapshots of this note and restore any of them later.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex gap-2">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Version name"
+          />
+          <Button
+            onClick={() => {
+              const trimmed = name.trim();
+              if (!trimmed) return;
+              onSave(trimmed);
+            }}
+            disabled={saving || !name.trim()}
+          >
+            Save
+          </Button>
+        </div>
+        <ScrollArea className="mt-2 max-h-80 rounded border">
+          {loading ? (
+            <div className="p-4 text-sm text-muted-foreground">Loading…</div>
+          ) : versions.length === 0 ? (
+            <div className="p-4 text-sm text-muted-foreground">
+              No saved versions yet.
+            </div>
+          ) : (
+            <ul className="divide-y">
+              {versions.map((v) => (
+                <li key={v.id} className="flex items-center gap-2 p-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{v.name}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {new Date(v.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmRestore(v)}
+                    disabled={restoring}
+                  >
+                    Restore
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDelete(v.id)}
+                    title="Delete version"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </ScrollArea>
+      </DialogContent>
+
+      <AlertDialog
+        open={!!confirmRestore}
+        onOpenChange={(o) => !o && setConfirmRestore(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore this version?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your current content will be saved as an auto-backup version
+              before "{confirmRestore?.name}" replaces it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmRestore) onRestore(confirmRestore.id);
+                setConfirmRestore(null);
+              }}
+            >
+              Restore
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Dialog>
+  );
+}
