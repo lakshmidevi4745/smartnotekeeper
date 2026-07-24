@@ -1375,6 +1375,53 @@ function NoteEditor({ noteId }: { noteId: string }) {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Rollback failed"),
   });
 
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const versionsQ = useQuery({
+    queryKey: ["note-versions", noteId],
+    queryFn: () => listNoteVersions({ data: { note_id: noteId } }),
+    enabled: versionsOpen,
+  });
+  const saveVersionM = useMutation({
+    mutationFn: (name: string) => {
+      cancelPendingSave();
+      return saveNoteVersion({ data: { note_id: noteId, name } });
+    },
+    onSuccess: () => {
+      toast.success("Version saved");
+      qc.invalidateQueries({ queryKey: ["note-versions", noteId] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Save version failed"),
+  });
+  const restoreVersionM = useMutation({
+    mutationFn: (id: string) => {
+      cancelPendingSave();
+      return restoreNoteVersion({ data: { id } });
+    },
+    onSuccess: (res) => {
+      const c = res?.content ?? "";
+      cancelPendingSave();
+      lastRenderedRef.current = null;
+      setContent(c);
+      setExternalContent(c);
+      setExternalSyncTick((t) => t + 1);
+      if (textareaRef.current) textareaRef.current.value = c;
+      pushHistory(c);
+      setSaveState("saved");
+      toast.success("Restored version");
+      setVersionsOpen(false);
+      qc.invalidateQueries({ queryKey: ["note", noteId] });
+      qc.invalidateQueries({ queryKey: ["note-versions", noteId] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Restore failed"),
+  });
+  const deleteVersionM = useMutation({
+    mutationFn: (id: string) => deleteNoteVersion({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["note-versions", noteId] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Delete failed"),
+  });
+
   const committedAt = noteQ.data?.committed_at ? new Date(noteQ.data.committed_at) : null;
 
   return (
