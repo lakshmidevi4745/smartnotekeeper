@@ -1458,6 +1458,10 @@ function NoteEditor({ noteId }: { noteId: string }) {
             <Undo className="h-4 w-4" />
             <span className="ml-1 hidden text-xs sm:inline">Rollback</span>
           </ToolbarBtn>
+          <ToolbarBtn label="Versions" onClick={() => setVersionsOpen(true)}>
+            <History className="h-4 w-4" />
+            <span className="ml-1 hidden text-xs sm:inline">Versions</span>
+          </ToolbarBtn>
           {committedAt && (
             <span className="ml-2 hidden text-[10px] text-muted-foreground lg:inline">
               last commit {committedAt.toLocaleString()}
